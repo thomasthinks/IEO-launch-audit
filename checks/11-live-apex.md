@@ -204,6 +204,28 @@ diffs don't dodge the dedup check. Duplicates trigger Google's
 "duplicate meta descriptions" warning in Search Console and waste
 SERP differentiation.
 
+### 11.K — Brave Search indexability probe (v1.1)
+
+| Assertion | Pass | Info | Manual-verify |
+|---|---|---|---|
+| Apex URL appears in Brave Search top-10 for brand-entity query | rank #N | absent / host-only match | API unreachable / rate-limited |
+
+Anthropic's Claude.ai web search routes through Brave Search (Anthropic
+subprocessor list, March 2025; Profound May 2025 measurement: 86.7%
+citation-URL overlap between Claude's cited sources and Brave's top-10,
+p<0.0001). Brave visibility is the practical Claude-citation eligibility
+lever.
+
+**NOTE: Brave does not offer a Webmaster Tools / Search Console
+product.** Site owners cannot directly submit URLs; Brave indexes via
+its Web Discovery Project (opt-in browser-side telemetry from Brave
+users). The lever is *Brave visibility*, not *Brave submission*.
+
+Opt-in: requires `brave_api_key` (free tier: 1 req/sec, 2k req/month at
+api.search.brave.com). When unconfigured, phase K emits a single INFO
+and skips. Findings are advisory only (INFO/PASS/MV); never FAIL —
+search-engine visibility is emergent and noisy.
+
 ## What this catches vs the internal audit (checks 1-10)
 
 | Class of issue | Internal (1-10) | Live (11) |
@@ -220,6 +242,7 @@ SERP differentiation.
 | Multi-hop redirect chains on inline links | no | yes |
 | Apparent orphan pages (sitemap-vs-link-graph drift) | no | yes |
 | Duplicate meta descriptions across pages | no | yes |
+| Brave Search indexability (Claude-citation eligibility) | no | yes (opt-in) |
 
 The two are complementary. Run 1-10 during development to catch
 source-side issues fast; run 11 against the live origin to catch what

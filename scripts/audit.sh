@@ -19,6 +19,9 @@
 #                         .launch-readiness-diff.md + stdout
 #   --diff-path PATH      Override prior-report location for --diff comparison
 #                         (e.g., compare against a saved snapshot)
+#   --verbose-pass        Pass-through to audit_diff.py; expand collapsed PASS
+#                         rows in the diff output (one line per finding instead
+#                         of a per-check summary). Only meaningful with --diff.
 #   -h, --help            Show this help
 set -euo pipefail
 
@@ -29,6 +32,7 @@ CONFIG=""
 OUTPUT_DIR=""
 DIFF=0
 DIFF_PATH=""
+VERBOSE_PASS=0
 NO_ROTATE=0
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -46,6 +50,7 @@ while [[ $# -gt 0 ]]; do
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --diff) DIFF=1; shift ;;
     --diff-path) DIFF_PATH="$2"; DIFF=1; shift 2 ;;
+    --verbose-pass) VERBOSE_PASS=1; shift ;;
     --no-rotate) NO_ROTATE=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
@@ -61,7 +66,8 @@ OUTPUT_DIR="${OUTPUT_DIR:-$REPO}"
 # It hits the network and adds ~60-90s; not in the 1-10 default block.
 [[ -z "$CHECKS" ]] && CHECKS="1,2,3,4,5,6,7,8,9,10"
 
-echo "IEO-launch-audit  v0.4.0"
+SKILL_VERSION="$(grep '^  version:' "$SKILL_DIR/SKILL.md" | head -1 | awk -F': ' '{print $2}')"
+echo "IEO-launch-audit  v${SKILL_VERSION}"
 echo "Repo:         $REPO"
 echo "Skill dir:    $SKILL_DIR"
 echo "Config:       $CONFIG"
@@ -221,15 +227,19 @@ if [[ $DIFF -eq 1 ]]; then
   PRIOR="${DIFF_PATH:-$REPORT_JSON_PREV}"
   echo ""
   echo "Diff:         $DIFF_MD"
+  VERBOSE_PASS_FLAG=""
+  [[ $VERBOSE_PASS -eq 1 ]] && VERBOSE_PASS_FLAG="--verbose-pass"
   if [[ -f "$PRIOR" ]]; then
     python3 "$SKILL_DIR/scripts/audit_diff.py" \
       --current "$REPORT_JSON" \
       --prior "$PRIOR" \
-      --out "$DIFF_MD"
+      --out "$DIFF_MD" \
+      ${VERBOSE_PASS_FLAG}
   else
     python3 "$SKILL_DIR/scripts/audit_diff.py" \
       --current "$REPORT_JSON" \
-      --out "$DIFF_MD"
+      --out "$DIFF_MD" \
+      ${VERBOSE_PASS_FLAG}
   fi
 fi
 

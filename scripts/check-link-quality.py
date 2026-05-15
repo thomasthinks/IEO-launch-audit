@@ -74,9 +74,14 @@ def run(args) -> CheckResult:
     total_links = 0
     single_word_links = 0
     multiword_named_concept_links = 0
+    exact_match_links = 0
     pieces_over_density = 0
     pieces_with_links = 0
     target_titles: dict[str, str] = {}
+    # Per-target anchor concentration: {target_slug: {anchor_lower: count}}.
+    # Used by 8.6 to detect single-phrase concentration on one target —
+    # the Google 2024-leak `phraseAnchorSpamFraq` signal.
+    per_target_anchors: dict[str, dict[str, int]] = {}
 
     # First pass: build slug→title index (for cross-checking anchor relevance)
     for p in pieces:
@@ -103,12 +108,22 @@ def run(args) -> CheckResult:
         for _section, slug, anchor in matches:
             anchor = anchor.strip()
             anchor_words = anchor.split()
+            anchor_l = anchor.lower()
+            target_title = target_titles.get(slug, "").lower().strip()
             if len(anchor_words) == 1:
                 single_word_links += 1
             elif len(anchor_words) >= 2:
-                target_title = target_titles.get(slug, "").lower()
-                if target_title and anchor.lower() in target_title:
+                if target_title and anchor_l in target_title:
                     multiword_named_concept_links += 1
+            # 8.5 — exact-match anchor: anchor text equals target page title.
+            # Tracked across all anchor lengths (a 1-word anchor that is
+            # the full title also counts; rare but possible for short
+            # titles like "Healthcare").
+            if target_title and anchor_l == target_title:
+                exact_match_links += 1
+            # 8.6 — per-target anchor concentration (any length).
+            per_target_anchors.setdefault(slug, {})
+            per_target_anchors[slug][anchor_l] = per_target_anchors[slug].get(anchor_l, 0) + 1
 
     # 8.1 — Single-word generic anchors
     if total_links > 0:
@@ -152,6 +167,104 @@ def run(args) -> CheckResult:
             result.findings.append(Finding(
                 id="8.3.density", severity="PASS",
                 title="Inline-link density within Stratechery-model target (<= 2 per 500w)",
+            ))
+
+        # 8.5 — Exact-match anchor ratio (v1.1).
+        # Mechanism (Google 2024 API leak): `phraseAnchorSpamFraq` +
+        # `anchorMismatchDemotion` — anchors that exactly match the target
+        # page's primary phrase, in large fractions, are a documented
+        # spam signal. Threshold below is practitioner-consensus (Ahrefs
+        # N=384k median 3.7; Sterling Sky Aug 2025 spam-update case
+        # study), NOT a Google-published number — frame findings as
+        # such. Cutoff: INFO >5%, WARN >10% site-wide.
+        em_pct = exact_match_links * 100 / total_links
+        if em_pct >= 10:
+            result.findings.append(Finding(
+                id="8.5.exact_match", severity="WARN",
+                title=(
+                    f"{exact_match_links}/{total_links} ({em_pct:.0f}%) inline "
+                    "anchors exactly match their target's title"
+                ),
+                expected="<10% (practitioner-consensus, Ahrefs N=384k)",
+                fix_safety="manual",
+                fix_action=(
+                    "Rewrite some exact-match anchors as named-concept or "
+                    "paraphrased anchors. Google's 2024-leak phraseAnchorSpamFraq "
+                    "signal treats high exact-match fractions as spammy."
+                ),
+                notes=(
+                    "Cutoff is practitioner-consensus, not Google-stated. "
+                    "Mechanism documented in 2024 Google API leak (Sterling Sky "
+                    "Aug 2025 spam-update case study)."
+                ),
+            ))
+        elif em_pct >= 5:
+            result.findings.append(Finding(
+                id="8.5.exact_match", severity="INFO",
+                title=(
+                    f"{exact_match_links}/{total_links} ({em_pct:.0f}%) inline "
+                    "anchors exactly match their target's title"
+                ),
+                expected="<5% conservative; <10% practitioner-consensus threshold",
+                notes=(
+                    "Below the WARN threshold; flagged as observability so "
+                    "drift toward 10% is visible across audit runs."
+                ),
+            ))
+        else:
+            result.findings.append(Finding(
+                id="8.5.exact_match", severity="PASS",
+                title=(
+                    f"{exact_match_links}/{total_links} ({em_pct:.0f}%) inline "
+                    "anchors are exact-match (well below consensus thresholds)"
+                ),
+            ))
+
+        # 8.6 — Per-target anchor-phrase concentration (v1.1).
+        # For each target slug, the most-frequent inbound anchor. If any
+        # single phrase pointing to one target exceeds 10% of inbound
+        # anchors AND the target has ≥10 inbound anchors (signal floor),
+        # flag — mirrors Google leak `phraseAnchorSpamFraq` mechanism at
+        # the per-target rather than the site-wide scale.
+        concentrated: list[tuple[str, str, int, int]] = []  # (slug, anchor, count, total_to_target)
+        for slug, anchor_counts in per_target_anchors.items():
+            target_total = sum(anchor_counts.values())
+            if target_total < 10:
+                continue  # noise floor — small targets always look "concentrated"
+            for anchor, count in anchor_counts.items():
+                if count * 10 > target_total:  # >10% of inbound to this target
+                    concentrated.append((slug, anchor, count, target_total))
+        if concentrated:
+            # Sort worst-first by absolute count.
+            concentrated.sort(key=lambda x: -x[2])
+            sample = [
+                f"'{a}' → /{s} ({c}/{t} = {c * 100 // t}%)"
+                for s, a, c, t in concentrated[:5]
+            ]
+            result.findings.append(Finding(
+                id="8.6.anchor_concentration", severity="WARN",
+                title=(
+                    f"{len(concentrated)} (target, anchor) pair(s) with single "
+                    "anchor phrase >10% of inbound anchors to that target"
+                ),
+                current=sample,
+                expected="No single anchor phrase should dominate inbound anchors for any one target",
+                fix_safety="manual",
+                fix_action=(
+                    "Diversify the anchors pointing at the over-concentrated "
+                    "targets; mechanical repetition triggers Google's 2024-leak "
+                    "phraseAnchorSpamFraq signal."
+                ),
+                notes="Signal floor: only targets with ≥10 inbound anchors are scored.",
+            ))
+        else:
+            scored_targets = sum(1 for sl, ac in per_target_anchors.items() if sum(ac.values()) >= 10)
+            result.findings.append(Finding(
+                id="8.6.anchor_concentration", severity="PASS",
+                title=(
+                    f"No single-anchor concentration >10% across {scored_targets} "
+                    "scored target(s) (≥10 inbound anchors each)"
+                ),
             ))
     else:
         result.findings.append(Finding(

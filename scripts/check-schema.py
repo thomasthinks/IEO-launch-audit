@@ -55,7 +55,21 @@ ARTICLE_SUBTYPES = [
     "AskPublicNewsArticle",
     "ReportageNewsArticle",
     "ReviewNewsArticle",
+    "SocialMediaPosting",
+    "DiscussionForumPosting",
 ]
+
+# v0.7 CiTO typed-citation relation markers. Emitter convention: the
+# typed-relation prefix appears in the `description` field of each
+# citation[] entry, e.g. "[groundedBy] Smith 2024 — proof of foo".
+# When `cito_enabled: true` (default), check 2.4d audits coverage.
+CITO_RELATION_MARKERS = (
+    "[groundedBy]",
+    "[extendedBy]",
+    "[substantiatedBy]",
+    "[contradictedBy]",
+    "[discussedIn]",
+)
 
 # v0.5 — curated Schema.org rules for offline type validation.
 RULES_PATH = Path(__file__).resolve().parent.parent / "references" / "schema-org-rules.json"
@@ -188,6 +202,105 @@ def _extract_validator_errors(response: dict) -> list[dict]:
                             "args": err.get("args", []),
                             "isSevere": bool(err.get("isSevere")),
                         })
+    return out
+
+
+# v1.1 — Speakable passage-length sanity bands.
+# Empirical basis: xSeek 1M-query AI Overviews dataset (Zyppy / Rampton
+# 2024): 62% of AIO outputs land in 100-300 words; modal band 150-200
+# words at 20.3% concentration. Speakable selectors resolving to passages
+# outside the 100-300 band aren't matching the structural primitive AI
+# engines emit. Frame as INFO (single-source empirical), not WARN/FAIL.
+SPEAKABLE_PASSAGE_MIN, SPEAKABLE_PASSAGE_MAX = 100, 300
+
+
+def _resolve_simple_selector_text(html: str, selector: str) -> str | None:
+    """Resolve a simple cssSelector against rendered HTML and return the
+    inner text content. Stdlib-only; supports a small grammar that covers
+    the Speakable patterns this skill recommends:
+
+      - `[attr-name]`          — element with that attribute
+      - `[attr="value"]`       — element with attr exactly "value"
+      - `#some-id`             — element with id="some-id"
+      - `.some-class`          — element whose class list contains some-class
+      - `tagname`              — first element of that type
+
+    Returns None when the grammar isn't supported or no element matches.
+    Callers must handle the None case; v1.1's word-count audit treats
+    unresolvable selectors as MV.
+    """
+    sel = selector.strip()
+    patterns = []
+    # [attr] / [attr="value"]
+    m = re.match(r'^\[([a-zA-Z][\w-]*)(?:=["\']?([^"\']+)["\']?)?\]$', sel)
+    if m:
+        attr, val = m.group(1), m.group(2)
+        attr_pat = (rf'\s{re.escape(attr)}="{re.escape(val)}"'
+                    if val else rf'\s{re.escape(attr)}\b')
+        patterns.append(
+            rf'<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*{attr_pat}[^>]*>(.*?)</\1>'
+        )
+    # #id
+    m = re.match(r'^#([\w-]+)$', sel)
+    if m:
+        idv = re.escape(m.group(1))
+        patterns.append(
+            rf'<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*\sid="{idv}"[^>]*>(.*?)</\1>'
+        )
+    # .class
+    m = re.match(r'^\.([\w-]+)$', sel)
+    if m:
+        cls = re.escape(m.group(1))
+        patterns.append(
+            rf'<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*\sclass="[^"]*\b{cls}\b[^"]*"[^>]*>(.*?)</\1>'
+        )
+    # tagname
+    m = re.match(r'^([a-zA-Z][a-zA-Z0-9]*)$', sel)
+    if m:
+        tag = re.escape(m.group(1))
+        patterns.append(rf'<{tag}\b[^>]*>(.*?)</{tag}>')
+
+    for pat_src in patterns:
+        match = re.search(pat_src, html, re.DOTALL | re.IGNORECASE)
+        if match:
+            # Last capture group is always the inner HTML.
+            inner = match.group(match.lastindex)
+            return re.sub(r'<[^>]+>', ' ', inner)
+    return None
+
+
+def _count_words(text: str) -> int:
+    """Whitespace-split word count after HTML strip."""
+    return len([w for w in text.split() if w.strip()])
+
+
+def _walk_speakable_nodes(parsed_jsonld) -> list:
+    """Yield each Speakable-shape dict found inside a parsed JSON-LD object.
+    Handles both Article.speakable inline values and standalone
+    SpeakableSpecification nodes nested in @graph."""
+    out = []
+    if isinstance(parsed_jsonld, list):
+        for item in parsed_jsonld:
+            out.extend(_walk_speakable_nodes(item))
+        return out
+    if not isinstance(parsed_jsonld, dict):
+        return out
+    # @graph
+    if isinstance(parsed_jsonld.get("@graph"), list):
+        for node in parsed_jsonld["@graph"]:
+            out.extend(_walk_speakable_nodes(node))
+    # Article-style: speakable property pointing at an object or array
+    sp = parsed_jsonld.get("speakable")
+    if isinstance(sp, dict):
+        out.append(sp)
+    elif isinstance(sp, list):
+        for s in sp:
+            if isinstance(s, dict):
+                out.append(s)
+    # Standalone SpeakableSpecification
+    t = parsed_jsonld.get("@type")
+    if t == "SpeakableSpecification" or (isinstance(t, list) and "SpeakableSpecification" in t):
+        out.append(parsed_jsonld)
     return out
 
 
@@ -501,6 +614,54 @@ def run(args) -> CheckResult:
                     fix_action="Emit mentions[] entries as @id refs to other Article @ids.",
                 ))
 
+        # 2.4d — CiTO typed-citation relation coverage (v1.1).
+        # When cito_enabled=true (default), audit how many citation[] entries
+        # carry a typed-relation marker in their description field. Skipped
+        # when the consumer has opted out via `cito_enabled: false` (for
+        # tooling that chokes on multi-@context JSON-LD or for sites that
+        # prefer vanilla schema.org citation arrays).
+        if config.get("cito_enabled", True) is False:
+            result.findings.append(Finding(
+                id="2.4.cito_coverage", severity="INFO",
+                title="CiTO typed-citation coverage check suppressed (cito_enabled: false in config)",
+                notes="Vanilla schema.org citation[] arrays accepted without typed-relation richness.",
+            ))
+        else:
+            with_citation = [a for a in sample if a.get("citation")]
+            if with_citation:
+                total_cites = 0
+                typed_cites = 0
+                for a in with_citation:
+                    for c in a.get("citation", []) or []:
+                        if not isinstance(c, dict):
+                            continue
+                        total_cites += 1
+                        desc = c.get("description", "") or ""
+                        if any(m in desc for m in CITO_RELATION_MARKERS):
+                            typed_cites += 1
+                if total_cites > 0:
+                    pct = typed_cites * 100 / total_cites
+                    severity = "PASS" if pct >= 80 else "WARN"
+                    result.findings.append(Finding(
+                        id="2.4.cito_coverage", severity=severity,
+                        title=(
+                            f"{typed_cites}/{total_cites} ({pct:.0f}%) citation[] entries "
+                            f"carry a CiTO typed-relation marker"
+                        ),
+                        expected="≥80% with [groundedBy] / [extendedBy] / [substantiatedBy] / [contradictedBy] / [discussedIn]",
+                        fix_safety="manual",
+                        fix_action=(
+                            "Expand the schema emitter to tag each citation[] entry's "
+                            "description with a CiTO relation prefix. Drop the check via "
+                            "`cito_enabled: false` if the consumer prefers vanilla schema.org."
+                        ),
+                        notes=(
+                            "CiTO relations are scoped to the description field so the "
+                            "JSON-LD remains schema.org-valid without requiring a cito: "
+                            "@context prefix."
+                        ),
+                    ))
+
     # 2.5 — CollectionPage → ItemList
     collections = get_nodes_by_type(graph, "CollectionPage")
     if collections:
@@ -794,6 +955,12 @@ def run(args) -> CheckResult:
         missing_jsonld = 0
         malformed_jsonld = 0
         valid_jsonld = 0
+        # 2.4.speakable_passage_length tracking (v1.1) — collect word
+        # counts for every resolvable Speakable cssSelector across the
+        # sampled pages. Outside-band counts are emitted as INFO, not
+        # WARN: empirical basis is single-source (xSeek AIO dataset).
+        speakable_word_counts: list[tuple[str, int]] = []  # (page_path, words)
+        speakable_unresolved: list[tuple[str, str]] = []  # (page_path, selector)
         for h in sample_html:
             html_text = h.read_text(encoding="utf-8")
             m = re.search(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', html_text, re.DOTALL)
@@ -801,10 +968,29 @@ def run(args) -> CheckResult:
                 missing_jsonld += 1
                 continue
             try:
-                json.loads(m.group(1))
+                parsed = json.loads(m.group(1))
                 valid_jsonld += 1
             except json.JSONDecodeError:
                 malformed_jsonld += 1
+                continue
+            # Walk Speakable nodes and resolve their cssSelectors against
+            # this page's HTML.
+            for sp_node in _walk_speakable_nodes(parsed):
+                sel = sp_node.get("cssSelector")
+                if isinstance(sel, str):
+                    selectors = [sel]
+                elif isinstance(sel, list):
+                    selectors = [s for s in sel if isinstance(s, str)]
+                else:
+                    selectors = []
+                for s in selectors:
+                    text = _resolve_simple_selector_text(html_text, s)
+                    if text is None:
+                        speakable_unresolved.append((str(h), s))
+                        continue
+                    words = _count_words(text)
+                    if words > 0:
+                        speakable_word_counts.append((str(h), words))
         if sample_html:
             sample_n = len(sample_html)
             if missing_jsonld > 0:
@@ -825,6 +1011,69 @@ def run(args) -> CheckResult:
                 result.findings.append(Finding(
                     id="2.8.perpage.valid", severity="PASS",
                     title=f"All {sample_n} sampled rendered pages have valid inline JSON-LD",
+                ))
+
+            # 2.4.speakable_passage_length — passage-length distribution
+            # across resolved Speakable selectors. Empirical band 100-300
+            # words from xSeek 1M-query AI Overviews dataset (2024). Frame
+            # findings as INFO (advisory) — single-source empirical, not
+            # gating.
+            if speakable_word_counts:
+                outside = [
+                    (p, w) for (p, w) in speakable_word_counts
+                    if w < SPEAKABLE_PASSAGE_MIN or w > SPEAKABLE_PASSAGE_MAX
+                ]
+                inside_n = len(speakable_word_counts) - len(outside)
+                if outside:
+                    sample_outside = [
+                        f"{Path(p).parent.name}/{Path(p).name} ({w}w)"
+                        for p, w in outside[:5]
+                    ]
+                    result.findings.append(Finding(
+                        id="2.4.speakable_passage_length", severity="INFO",
+                        title=(
+                            f"{len(outside)}/{len(speakable_word_counts)} Speakable "
+                            f"selectors resolve to passages outside {SPEAKABLE_PASSAGE_MIN}-"
+                            f"{SPEAKABLE_PASSAGE_MAX} words (advisory)"
+                        ),
+                        current=sample_outside,
+                        expected=(
+                            f"{SPEAKABLE_PASSAGE_MIN}-{SPEAKABLE_PASSAGE_MAX} words "
+                            "(matches modal AI Overview output length, xSeek 1M-query dataset 2024)"
+                        ),
+                        fix_safety="manual",
+                        fix_action=(
+                            "Reshape the targeted passage to land near 150-200 words. "
+                            "Too-short passages provide thin extraction; too-long passages "
+                            "exceed the modal AIO output band and reduce reliable extraction."
+                        ),
+                        notes=(
+                            "Single-source empirical (xSeek/Zyppy 1M-query AI Overviews "
+                            "analysis). Frame as observability, not a hard rule."
+                        ),
+                    ))
+                else:
+                    result.findings.append(Finding(
+                        id="2.4.speakable_passage_length", severity="PASS",
+                        title=(
+                            f"All {inside_n} resolved Speakable passages within "
+                            f"{SPEAKABLE_PASSAGE_MIN}-{SPEAKABLE_PASSAGE_MAX} word band"
+                        ),
+                    ))
+            elif speakable_unresolved:
+                # Some selectors found but none resolvable by the simple grammar.
+                result.findings.append(Finding(
+                    id="2.4.speakable_passage_length", severity="MANUAL_VERIFY",
+                    title=(
+                        f"{len(speakable_unresolved)} Speakable cssSelector(s) used "
+                        "compound/non-trivial grammar; passage-length audit skipped"
+                    ),
+                    current=[s for _p, s in speakable_unresolved[:5]],
+                    notes=(
+                        "Stdlib selector grammar supports [attr], [attr=value], "
+                        "#id, .class, tagname. Compound selectors (descendant, "
+                        "child, multiple-class) are out of scope."
+                    ),
                 ))
 
     result.summary = (

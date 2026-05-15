@@ -6,11 +6,15 @@ auditors (Screaming Frog, Sitebulb, Ahrefs, Lighthouse, Schema Markup
 Validator, Google Rich Results Test) will flag, plus the LLM-citation-side
 gaps the SEO tool ecosystem still under-covers.
 
-**Status:** 0.9.0 (PageSpeed Insights + CrUX field-data integration;
-Cloudflare WAF probe; live-apex Screaming-Frog-parity audit; typed-citation
-graph scaffold; editorial-date sitemap mode; web-validator fallback for
-long-tail Schema.org @types). See `CHANGELOG.md` for the full v0.5 → v0.9
-roll-up.
+**Status:** 1.1.0 (production-ready, post-launch hardening pass + verified
+v1.1 candidates). v1.0 declared production-ready against a real live origin
+with zero false positives; v1.1 adds verified findings from a second
+research-verification pass: Brave Search indexability probe (Claude-citation
+eligibility), exact-match anchor ratio (Google 2024-leak `phraseAnchorSpamFraq`
+signal), Speakable passage-length band (xSeek AIO empirical), CiTO typed-
+citation coverage (opt-out via `cito_enabled: false`), long-tail Article
+subtypes promoted to offline rules, `--verbose-pass` passthrough on the
+diff tool. See `CHANGELOG.md` for the full v0.5 → v1.1 roll-up.
 
 Add `.launch-readiness-report.*` to your repo's `.gitignore` to keep
 generated reports out of version control. The reports are local artifacts

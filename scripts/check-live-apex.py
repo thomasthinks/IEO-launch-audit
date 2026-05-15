@@ -41,8 +41,10 @@ Phases G-J reuse the existing page + link samples (no extra apex fetches).
 from __future__ import annotations
 
 import json
+import os
 import random
 import re
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -70,6 +72,11 @@ UA = (
 ARTICLE_TYPES = {
     "Article", "NewsArticle", "BlogPosting",
     "ScholarlyArticle", "TechArticle", "Report",
+    "AdvertiserContentArticle", "OpinionNewsArticle",
+    "SatiricalArticle", "BackgroundNewsArticle",
+    "AnalysisNewsArticle", "AskPublicNewsArticle",
+    "ReportageNewsArticle", "ReviewNewsArticle",
+    "SocialMediaPosting", "DiscussionForumPosting",
 }
 
 SITEMAP_NS = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
@@ -256,6 +263,41 @@ def normalize_internal(href: str, apex: str) -> str | None:
         return href
     if href.startswith("/"):
         return apex.rstrip("/") + href
+    return None
+
+
+def _resolve_secret(repo: Path, secret_rel: str | None, env_var: str) -> str | None:
+    """Resolve an API key, in priority order:
+      1. <env_var> env var (explicit, no decryption needed).
+      2. SOPS-decrypted secrets file at `secret_rel` (relative to repo).
+         Requires `sops` on PATH. Mirrors the cf-api / pagespeed pattern.
+    Returns None if no key is reachable. Caller treats None as 'not
+    configured' and falls back to a skip-style finding.
+    """
+    tok = os.environ.get(env_var)
+    if tok:
+        return tok.strip()
+    if not secret_rel:
+        return None
+    secret_path = repo / secret_rel
+    if not secret_path.exists():
+        return None
+    try:
+        out = subprocess.run(
+            ["sops", "-d", str(secret_path)],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    for line in out.stdout.splitlines():
+        m = re.match(rf"^\s*{re.escape(env_var)}\s*:\s*(.+?)\s*$", line)
+        if m:
+            val = m.group(1).strip()
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in ('"', "'"):
+                val = val[1:-1]
+            return val
     return None
 
 
@@ -1068,6 +1110,152 @@ def run(args) -> CheckResult:
             id="11.J.desc_duplicates", severity="PASS",
             title=f"All {len(desc_to_pages)} non-empty meta descriptions are unique across the sample",
         ))
+
+    # ---- Phase K: Brave Search indexability probe (v1.1) -------------
+    # Anthropic's Claude.ai web search routes through Brave Search (March
+    # 2025 subprocessor list; Profound May 2025 measurement found 86.7%
+    # citation-URL overlap between Claude's cited sources and Brave's
+    # top-10 results, p<0.0001). Brave visibility correlates with Claude
+    # citation eligibility — but Brave doesn't offer a Webmaster Tools
+    # / Search Console product (confirmed by Brave staff in community
+    # threads). The lever is *Brave visibility*, not *Brave submission*.
+    #
+    # This phase queries Brave Search for the apex's brand-entity query
+    # and checks whether the canonical URL appears in the top-10 results.
+    # Opt-in: requires `brave_api_key` (free tier: 1 req/sec, 2k req/month
+    # at api.search.brave.com). When unconfigured, emits a single INFO.
+    # Findings are advisory (INFO/MV); never FAIL — search-engine
+    # visibility is emergent and noisy.
+    repo_path = Path(getattr(args, "repo", ".") or ".")
+    brave_key = (
+        config.get("brave_api_key")
+        or _resolve_secret(repo_path, config.get("brave_secret_path"), "BRAVE_API_KEY")
+    )
+    if not brave_key:
+        result.findings.append(Finding(
+            id="11.K.brave_probe", severity="INFO",
+            title="Brave Search indexability probe skipped (no brave_api_key configured)",
+            notes=(
+                "Anthropic's Claude.ai web search routes through Brave Search "
+                "(Profound May 2025: 86.7% citation-URL overlap). To enable this "
+                "phase, set `brave_api_key` in .launch-readiness.yml or "
+                "`brave_secret_path` to a SOPS file with BRAVE_API_KEY. Free tier: "
+                "1 req/sec, 2k req/month at api.search.brave.com. NOTE: Brave does "
+                "not offer a Webmaster Tools / Search Console product — the lever "
+                "is *Brave visibility*, not *Brave submission*."
+            ),
+        ))
+    else:
+        # Default query: bare apex host. Operator can override for brand
+        # queries that aren't just the domain name (e.g. "Author Name" or
+        # "Brand Name") via `brave_probe_query`.
+        default_query = urllib.parse.urlparse(apex).netloc
+        query = config.get("brave_probe_query", default_query)
+        api_url = (
+            "https://api.search.brave.com/res/v1/web/search?"
+            + urllib.parse.urlencode({"q": query, "count": 10})
+        )
+        req = urllib.request.Request(
+            api_url,
+            headers={
+                "Accept": "application/json",
+                "Accept-Encoding": "identity",
+                "X-Subscription-Token": brave_key,
+                "User-Agent": "IEO-launch-audit/1.1 (+brave-probe)",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw = resp.read()
+            payload = json.loads(raw.decode("utf-8", errors="replace"))
+        except urllib.error.HTTPError as e:
+            code = getattr(e, "code", 0)
+            if code == 429:
+                result.findings.append(Finding(
+                    id="11.K.brave_probe", severity="MANUAL_VERIFY",
+                    title="Brave Search API rate-limited (HTTP 429); probe skipped this run",
+                    notes=(
+                        "Free-tier limit is 1 req/sec, 2k req/month. Try again or "
+                        "check api.search.brave.com dashboard for quota state."
+                    ),
+                ))
+            else:
+                result.findings.append(Finding(
+                    id="11.K.brave_probe", severity="MANUAL_VERIFY",
+                    title=f"Brave Search API returned HTTP {code}; probe skipped this run",
+                    notes="Verify brave_api_key is valid and api.search.brave.com is reachable.",
+                ))
+            payload = None
+        except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as e:
+            result.findings.append(Finding(
+                id="11.K.brave_probe", severity="MANUAL_VERIFY",
+                title="Brave Search API unreachable / non-JSON response; probe skipped this run",
+                notes=str(e)[:200],
+            ))
+            payload = None
+        if payload is not None:
+            results = (payload.get("web") or {}).get("results") or []
+            urls_seen = [(r.get("url") or "").rstrip("/") for r in results]
+            apex_norm = apex.rstrip("/")
+            apex_host = urllib.parse.urlparse(apex).netloc
+            apex_match_idx = None
+            host_match_idx = None
+            for i, u in enumerate(urls_seen):
+                if u == apex_norm:
+                    apex_match_idx = i
+                    break
+            if apex_match_idx is None:
+                for i, u in enumerate(urls_seen):
+                    if apex_host and apex_host in u:
+                        host_match_idx = i
+                        break
+            if apex_match_idx is not None:
+                result.findings.append(Finding(
+                    id="11.K.brave_probe", severity="PASS",
+                    title=(
+                        f"Brave Search returned apex at rank #{apex_match_idx + 1} "
+                        f"for query '{query}' (top {len(urls_seen)})"
+                    ),
+                    notes=(
+                        "Apex visibility on Brave is the practical Claude-citation "
+                        "eligibility lever — Claude.ai web search routes through Brave."
+                    ),
+                ))
+            elif host_match_idx is not None:
+                result.findings.append(Finding(
+                    id="11.K.brave_probe", severity="INFO",
+                    title=(
+                        f"Brave Search returned a non-apex URL on this host at rank #"
+                        f"{host_match_idx + 1} for query '{query}'"
+                    ),
+                    current=urls_seen[host_match_idx],
+                    notes=(
+                        "Apex itself not in top-10 but the host is represented. "
+                        "Apex-first canonicalization may improve Claude-citation eligibility."
+                    ),
+                ))
+            else:
+                result.findings.append(Finding(
+                    id="11.K.brave_probe", severity="INFO",
+                    title=(
+                        f"Apex not visible in Brave Search top-{len(urls_seen)} for "
+                        f"query '{query}'"
+                    ),
+                    current=urls_seen[:5],
+                    fix_safety="manual",
+                    fix_action=(
+                        "Brave indexing is via the Web Discovery Project (opt-in "
+                        "telemetry from Brave-browser users) — site owners can't "
+                        "directly submit. Practical levers: increase site discoverability "
+                        "(linkbuilding, content depth, organic Google ranking), and "
+                        "ensure robots.txt / sitemap / HTML rendering is crawler-friendly. "
+                        "Try a different brand-entity query via `brave_probe_query` if "
+                        "the default (bare domain) doesn't match how users search."
+                    ),
+                    notes=(
+                        "Single Brave-API call per audit run. Free-tier quota: 2k/month."
+                    ),
+                ))
 
     # ---- Summary ------------------------------------------------------
     counts = Counter(f.severity for f in result.findings)

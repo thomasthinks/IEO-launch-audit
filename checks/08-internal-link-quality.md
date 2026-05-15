@@ -58,6 +58,28 @@ For each `<a href="/writing/...">phrase</a>` in piece bodies:
 | mentions[] targets share pillar or named intersection with source | yes | adjacent | random |
 | mentions[] phrase appears in target's title or first paragraph | yes | body only | no overlap |
 
+### 8.5 — Exact-match anchor ratio (v1.1)
+
+Anchors whose text exactly matches the target page's title are a documented
+spam-class signal in Google's 2024 API leak (`phraseAnchorSpamFraq` +
+`anchorMismatchDemotion`). Specific cutoffs are practitioner-consensus
+(Ahrefs N=384k median 3.7 exact-match anchors on top-ranking pages;
+Sterling Sky August 2025 spam-update case study), not Google-stated.
+
+| Assertion | Pass | Info | Warn |
+|---|---|---|---|
+| Site-wide exact-match anchor ratio | <5% | 5-10% | ≥10% |
+
+### 8.6 — Per-target anchor-phrase concentration (v1.1)
+
+For each target URL with ≥10 inbound anchors (signal floor), check that no
+single anchor phrase dominates inbound coverage. Mechanism: same Google
+2024-leak `phraseAnchorSpamFraq` at per-target rather than site-wide scale.
+
+| Assertion | Pass | Warn |
+|---|---|---|
+| Every (target, anchor) pair where `count / inbound_to_target > 10%` | none | any |
+
 ## How to fix
 
 ### Fix 8.1 — Strip mechanical TFIDF links

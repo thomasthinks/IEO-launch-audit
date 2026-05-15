@@ -62,10 +62,14 @@ Person should have: `@id` (absolute), `@type`, `name`, `url`, `description`,
 
 ### 2.4 — Article entity completeness
 
-Article should have: `@type` (any of: `Article`, `NewsArticle`,
-`BlogPosting`, `ScholarlyArticle`, `TechArticle`, `Report`, plus the
-narrower news-subtypes — all inherit Article's required-property set
-per Schema.org's hierarchy), `@id`
+Article should have: `@type` (any of 15 subtypes covered by offline
+rules as of v1.1: `Article`, `NewsArticle`, `BlogPosting`,
+`ScholarlyArticle`, `TechArticle`, `Report`,
+`AdvertiserContentArticle`, `OpinionNewsArticle`, `SatiricalArticle`,
+`BackgroundNewsArticle`, `AnalysisNewsArticle`,
+`AskPublicNewsArticle`, `ReportageNewsArticle`, `ReviewNewsArticle`,
+`SocialMediaPosting`, `DiscussionForumPosting` — all inherit Article's
+required-property set per Schema.org's hierarchy), `@id`
 (absolute), `url`, `headline`, `description`, `datePublished`,
 `dateModified`, `author` (refs Person @id), `inLanguage`, `wordCount`,
 `articleSection` (string pillar), `keywords`, `mentions` (array of @id
@@ -82,6 +86,8 @@ ImageObject).
 | `mentions[]` entries are @id refs (not inline objects) | refs | inline | empty |
 | Speakable `cssSelector` is array of multiple selectors | array | single | missing |
 | `image` refs an ImageObject (not just a URL string) | object | URL string | missing |
+| **CiTO typed-citation coverage** (≥80% of `citation[]` entries carry a `[groundedBy]` / `[extendedBy]` / `[substantiatedBy]` / `[contradictedBy]` / `[discussedIn]` marker in description) — *v1.1, gated by `cito_enabled: true` (default); opt out for vanilla schema.org* | ≥80% | <80% | — |
+| **Speakable passage word-count band** (resolved selector text lands in 100-300 words, matching modal AI Overview output) — *v1.1, INFO severity; single-source empirical (xSeek 1M-query AIO dataset 2024)* | inside band | outside band → INFO | — |
 
 ### 2.5 — ImageObject for hero images
 

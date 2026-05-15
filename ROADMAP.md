@@ -4,7 +4,7 @@ What's beyond v1.0. Not a commitment; a holding area for candidates ranked by
 "would this catch a class of finding the skill misses today, and is it
 portable across consumers."
 
-## v1.1 candidates
+## v1.2 candidates
 
 ### GSC + Bing Webmaster API integration
 
@@ -19,33 +19,8 @@ Index Coverage report.
 
 Auth complexity is the open question — GSC requires service-account or OAuth
 flow; Bing is API-key. Probably warrants a `references/`-side doc on auth
-setup that mirrors the PSI key flow.
-
-### CiTO @context optionality
-
-v0.7 introduced typed citations via the CiTO ontology
-(`@context: ["https://schema.org", {"cito": "http://purl.org/spar/cito/"}]`).
-Some consumers will want vanilla Schema.org @context for tooling that chokes
-on multi-context JSON-LD. A config key like `cito_enabled: false` would let
-the skill emit Schema.org-only `citation` arrays + flag in check 2 that
-typed-citation richness is reduced.
-
-### `audit-diff --verbose-pass` passthrough
-
-v1.0's `audit_diff.py` collapses PASS rows to one-liner per check by default;
-`--verbose-pass` expands them. The `audit.sh` orchestrator doesn't currently
-expose this flag — `--verbose-pass` only works when invoking `audit_diff.py`
-directly. Wiring it through `audit.sh` is mechanical.
-
-### Narrow Article subtypes in offline rules
-
-Check 2's offline schema rules currently cover 6 broad `Article` subtypes
-(`Article`, `NewsArticle`, `BlogPosting`, `TechArticle`, `ScholarlyArticle`,
-`SocialMediaPosting`). Long-tail subtypes (`Report`, `AnalysisNewsArticle`,
-`OpinionNewsArticle`, `ReviewNewsArticle`, `SatiricalArticle`) fall through
-to the v0.6 web-validator fallback when present. The fallback works, but
-adding offline rules for the long-tail set is faster, deterministic, and
-removes a network round-trip per build.
+setup that mirrors the PSI key flow. Deferred from v1.1 because the OAuth
+surface is meaningful net-new auth complexity.
 
 ## v1.2+ candidates
 
@@ -105,3 +80,11 @@ in the version's CHANGELOG entry; otherwise it doesn't ship.
 - **Paid-API requirement.** PSI / CrUX / OPR are opt-in; the skill must
   ship a useful audit with zero API keys. Anything that makes a paid key
   required is declined on portability grounds.
+- **Regulatory-compliance auditing (EU AI Act, CCPA, DSA, etc.).** Different
+  audit class from SEO/IEO/GEO — compliance is lawyer territory, not
+  crawler territory. EU AI Act Article 50 (the most-asked-about 2026
+  surface) imposes machine-readable marking on AI *providers* (model labs)
+  and visible disclosure on *deployers* publishing AI content on matters of
+  public interest, with an editorial-control exemption that covers most
+  human-edited sites. Enforcement priority is providers + large platforms,
+  not individual essay/blog sites. Out of scope; consult counsel.

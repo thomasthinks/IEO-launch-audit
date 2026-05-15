@@ -197,14 +197,25 @@ content_tactics:
 # Default: 10
 jsonld_sample_size: 10
 
+# CiTO typed-citation coverage (check 2.4d, v1.1).
+# Default: true. When true, the audit reports the fraction of citation[]
+# entries that carry a CiTO typed-relation marker in their description
+# ([groundedBy] / [extendedBy] / [substantiatedBy] / [contradictedBy] /
+# [discussedIn]). Set to false for sites that prefer vanilla schema.org
+# citation arrays without typed-relation richness (e.g. tooling that
+# chokes on multi-@context JSON-LD); the audit will then suppress the
+# typed-coverage finding.
+# cito_enabled: true
+
 # Web-validator fallback for check 2.10 (v0.6).
 # When true, any @type in schema-graph.json NOT covered by the offline
-# curated rules (references/schema-org-rules.json -- Article, Person,
-# WebSite, CollectionPage, ProfilePage, ImageObject, BreadcrumbList,
-# ItemList, ListItem, DefinedTerm, SpeakableSpecification, Occupation,
-# ScholarlyArticle) is POSTed to validator.schema.org for advisory
-# validation. Useful when the consumer site emits Recipe / Product /
-# VideoObject / Event / FAQPage / HowTo / etc.
+# curated rules (references/schema-org-rules.json -- Article + 14
+# subtypes, Person, Organization, WebSite, WebPage, CollectionPage,
+# ProfilePage, ImageObject, BreadcrumbList, ItemList, ListItem,
+# DefinedTerm, SpeakableSpecification, Occupation) is POSTed to
+# validator.schema.org for advisory validation. Useful when the consumer
+# site emits Recipe / Product / VideoObject / Event / FAQPage / HowTo /
+# etc.
 #
 # Caveats:
 #   - validator.schema.org is unofficial (Google-hosted contribution),
@@ -216,6 +227,45 @@ jsonld_sample_size: 10
 #
 # Default: false (opt-in to avoid network calls + rate-limit risk).
 web_validator_fallback: false
+
+# -------------------------------------------------------------------
+# Check 11 -- Live-apex audit
+# -------------------------------------------------------------------
+
+# Title-tag display range (phase G, Screaming-Frog parity).
+# Defaults (30-65 chars) match Google's SERP truncation thresholds.
+# Relax when the consumer has editorial-intentional deviations (operator-
+# class long-form descriptors, short brand-voice titles). The conservative
+# 30-65 range is also tracked as a soft-reminder INFO when relaxed.
+# title_length_min: 30
+# title_length_max: 65
+
+# Meta-description display range (phase G).
+# Defaults (70-160 chars) match Google's SERP truncation thresholds.
+# Long descriptions can be intentional for GEO (LLM-citation context) over
+# SEO (SERP-snippet display); relax when editorial discipline calls for it.
+# description_length_min: 70
+# description_length_max: 160
+
+# Brave Search indexability probe (phase K, v1.1).
+# Anthropic's Claude.ai web search routes through Brave Search
+# (Anthropic subprocessor list, March 2025; Profound May 2025: 86.7%
+# citation-URL overlap, p<0.0001). Brave visibility is the practical
+# Claude-citation eligibility lever. NOTE: Brave does NOT offer a
+# Webmaster Tools / Search Console product -- the lever is *Brave
+# visibility*, not *Brave submission*.
+#
+# Free tier: 1 req/sec, 2k req/month at api.search.brave.com. The audit
+# issues exactly 1 request per run. When unset, phase K emits a single
+# INFO and skips. Findings are advisory only (INFO/MV); never FAIL --
+# search-engine visibility is emergent and noisy.
+#
+# brave_api_key: BSA...               # inline; convenient but not recommended
+#                                     # for committed configs
+# brave_secret_path: secrets/brave.enc.yaml  # SOPS-encrypted with
+#                                             # BRAVE_API_KEY: <key>
+# brave_probe_query: "Brand Name"    # query to issue; defaults to the
+#                                     # bare apex host (e.g. example.com)
 
 # -------------------------------------------------------------------
 # Curation scaffold (v0.5+)

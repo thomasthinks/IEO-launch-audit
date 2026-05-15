@@ -1,12 +1,12 @@
 {
-  "_comment": "Curated Schema.org type+property rules for IEO-launch-audit check 02 v0.5 (expanded v0.9). NOT exhaustive vs schema.org/version/latest; covers the types this skill audits: Article (+ subtypes: NewsArticle, BlogPosting, ScholarlyArticle, TechArticle, Report — all inherit Article's required-property set), Person, Organization, WebSite, WebPage, BreadcrumbList, CollectionPage, ProfilePage, ImageObject, ItemList, ListItem, DefinedTerm, SpeakableSpecification, Occupation. Source: schema.org core vocabulary release notes through 2026-05. Update version field on each refresh so out-of-date drift is detectable.",
-  "version": "2026-05b",
+  "_comment": "Curated Schema.org type+property rules for IEO-launch-audit check 02 v0.5 (expanded v0.9, long-tail Article subtypes added v1.1). NOT exhaustive vs schema.org/version/latest; covers the types this skill audits: Article (+ subtypes: NewsArticle, BlogPosting, ScholarlyArticle, TechArticle, Report, AdvertiserContentArticle, OpinionNewsArticle, SatiricalArticle, BackgroundNewsArticle, AnalysisNewsArticle, AskPublicNewsArticle, ReportageNewsArticle, ReviewNewsArticle, SocialMediaPosting, DiscussionForumPosting — all inherit Article's required-property set), Person, Organization, WebSite, WebPage, BreadcrumbList, CollectionPage, ProfilePage, ImageObject, ItemList, ListItem, DefinedTerm, SpeakableSpecification, Occupation. Source: schema.org core vocabulary release notes through 2026-05. Update version field on each refresh so out-of-date drift is detectable.",
+  "version": "2026-05c",
   "schema_org_version": "27.0",
   "_web_validator": {
     "purpose": "Long-tail @types (Recipe, Product, VideoObject, Event, FAQPage, HowTo, Course, JobPosting, LocalBusiness, etc.) are NOT covered by the offline curated rules above. v0.6 ships an opt-in web-validator fallback (check 2.10) that POSTs uncovered-type nodes to validator.schema.org for advisory validation.",
     "endpoint": "https://validator.schema.org/validate (unofficial; hosted by Google; no API contract; rate-limited; output shape may change without notice).",
-    "out_of_scope_offline": "Recipe, Product, Offer, AggregateOffer, Review, AggregateRating, VideoObject, AudioObject, Event, FAQPage, Question, Answer, HowTo, HowToStep, Course, JobPosting, LocalBusiness, Organization (most properties), Service, Book, Movie, MusicRecording, TVSeries, SoftwareApplication, Dataset, MedicalEntity, ClaimReview — anything outside the editorial-site type set this skill audits. The fallback catches them at audit time without inflating the offline catalog.",
-    "should_be_covered_offline": "BreadcrumbList ListItem item-shape (currently only the top-level rules are checked — ListItem now requires position + name + item, but the inner item-target shape is not validated). Organization + WebPage were promoted to offline rules in v0.9 (2026-05) once consumer-site usage justified the maintenance cost.",
+    "out_of_scope_offline": "Recipe, Product, Offer, AggregateOffer, Review, AggregateRating, VideoObject, AudioObject, Event, FAQPage, Question, Answer, HowTo, HowToStep, Course, JobPosting, LocalBusiness, Service, Book, Movie, MusicRecording, TVSeries, SoftwareApplication, Dataset, MedicalEntity, ClaimReview — anything outside the editorial-site type set this skill audits. The fallback catches them at audit time without inflating the offline catalog.",
+    "should_be_covered_offline": "BreadcrumbList ListItem item-shape (currently only the top-level rules are checked — ListItem now requires position + name + item, but the inner item-target shape is not validated). Organization + WebPage were promoted to offline rules in v0.9 (2026-05) once consumer-site usage justified the maintenance cost. Long-tail Article subtypes (AdvertiserContentArticle, OpinionNewsArticle, SatiricalArticle, BackgroundNewsArticle, AnalysisNewsArticle, AskPublicNewsArticle, ReportageNewsArticle, ReviewNewsArticle, SocialMediaPosting, DiscussionForumPosting) were promoted to offline rules in v1.1 (2026-05) — all inherit Article's required-prop set, so the maintenance cost is one shared rule template.",
     "expansion_policy": "Promote a type from web_validator fallback to offline curated rules when (a) a consumer site emits it on >5% of pages, and (b) the validator's findings have stabilised across 2+ audit runs without false-positives. Otherwise the fallback is preferable: it avoids committing this skill to maintain an exhaustive Schema.org catalog."
   },
   "deprecated_properties": {
@@ -24,6 +24,16 @@
     "BlogPosting": ["@type", "@id", "headline", "datePublished", "author"],
     "TechArticle": ["@type", "@id", "headline", "datePublished", "author"],
     "Report": ["@type", "@id", "headline", "datePublished", "author"],
+    "AdvertiserContentArticle": ["@type", "@id", "headline", "datePublished", "author"],
+    "OpinionNewsArticle": ["@type", "@id", "headline", "datePublished", "author"],
+    "SatiricalArticle": ["@type", "@id", "headline", "datePublished", "author"],
+    "BackgroundNewsArticle": ["@type", "@id", "headline", "datePublished", "author"],
+    "AnalysisNewsArticle": ["@type", "@id", "headline", "datePublished", "author"],
+    "AskPublicNewsArticle": ["@type", "@id", "headline", "datePublished", "author"],
+    "ReportageNewsArticle": ["@type", "@id", "headline", "datePublished", "author"],
+    "ReviewNewsArticle": ["@type", "@id", "headline", "datePublished", "author"],
+    "SocialMediaPosting": ["@type", "@id", "headline", "datePublished", "author"],
+    "DiscussionForumPosting": ["@type", "@id", "headline", "datePublished", "author"],
     "Person": ["@type", "@id", "name"],
     "Organization": ["@type", "@id", "name", "url"],
     "WebSite": ["@type", "@id", "url"],

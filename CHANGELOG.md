@@ -3,6 +3,85 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.1.0] — 2026-05-15
+
+Post-v1.0 verification pass: a `seo_learnings.md` artifact carried over from the parent repo's extraction was put through a four-subagent verification sweep. Three claims survived with revisions and are shipped here; two fabricated/misattributed claims were declined (EU AI Act Article 50 disclosure check declined entirely as out-of-scope regulatory-compliance auditing, recorded in ROADMAP.md). The release also folds in the two leftover ROADMAP-side v1.1 candidates (CiTO @context optionality, narrow Article subtypes, `audit-diff --verbose-pass` passthrough). No breaking changes; all additions are opt-in or default-on with the same severity ceiling as prior advisory checks.
+
+### Added
+
+- **Brave Search indexability probe (check 11 phase K).** Opt-in single-call probe to `api.search.brave.com/res/v1/web/search` for a brand-entity query (default: bare apex host; configurable via `brave_probe_query`). Findings:
+  - `11.K.brave_probe` PASS — apex appeared in top-10 (reports the rank).
+  - INFO — apex absent (host-only match recognized separately).
+  - MV — API unreachable / rate-limited / non-JSON.
+  - INFO — phase skipped (no `brave_api_key` configured).
+
+  Anthropic's Claude.ai web search routes through Brave Search (Anthropic subprocessor list, March 2025; Profound May 2025 measurement: 86.7% citation-URL overlap, p<0.0001). Brave visibility is the practical Claude-citation eligibility lever. **The skill explicitly does NOT recommend "submitting to Brave Webmaster Tools" — that product does not exist** (confirmed by Brave staff in community threads); Brave indexes via the Web Discovery Project (opt-in browser-side telemetry). Findings are advisory only (PASS/INFO/MV); never FAIL — search-engine visibility is emergent and noisy. Free-tier quota at api.search.brave.com is 1 req/sec, 2k req/month; the audit issues exactly one request per run. Config: `brave_api_key` (inline), `brave_secret_path` (SOPS-encrypted with `BRAVE_API_KEY`), or env `BRAVE_API_KEY`.
+
+- **Exact-match anchor ratio (check 8.5, 8.6).** Two new findings extend check 8's anchor-text-quality audit:
+  - `8.5.exact_match` — site-wide ratio of inline anchors whose text exactly matches their target page's title. PASS <5%, INFO 5-10%, WARN ≥10%.
+  - `8.6.anchor_concentration` — per-target-URL anchor-phrase concentration. For each target with ≥10 inbound anchors (signal floor), WARN if any single anchor phrase exceeds 10% of inbound coverage.
+
+  Mechanism documented in the 2024 Google API leak: `phraseAnchorSpamFraq` measures spammy-anchor fraction per phrase; `anchorMismatchDemotion` penalizes anchor-text-to-target-topic mismatch. Findings cite the leak as mechanism and label the cutoffs as practitioner-consensus (Ahrefs N=384k median 3.7 exact-match anchors on top-ranking pages; Sterling Sky August 2025 spam-update case study), not as Google-stated numbers.
+
+- **Speakable passage-length sanity check (check 2.4.speakable_passage_length).** When per-page JSON-LD sampling resolves a Speakable `cssSelector` to a DOM node, the audit counts the passage's words and flags resolutions outside the 100-300 word band as INFO. Empirical basis: xSeek 1M-query AI Overviews dataset (Zyppy/Rampton 2024) — 62% of AIO outputs in 100-300 words; modal band 150-200 at 20.3%. Frame as observability (single-source empirical), not gating. Stdlib selector grammar supports `[attr]`, `[attr="value"]`, `#id`, `.class`, `tagname`; compound selectors fall through to MV.
+
+- **CiTO typed-citation coverage (check 2.4.cito_coverage, v0.7 + v1.1).** New finding audits the fraction of `citation[]` entries that carry a CiTO-style typed-relation marker (`[groundedBy]` / `[extendedBy]` / `[substantiatedBy]` / `[contradictedBy]` / `[discussedIn]`) in their `description` field. PASS ≥80%, WARN <80%. New config key `cito_enabled` (default `true`) gates the check; consumers who prefer vanilla schema.org citation arrays without typed-relation richness set `cito_enabled: false` to suppress.
+
+- **Narrow Article subtypes in offline rules (check 2.9).** `references/schema-org-rules.json` expanded from 6 covered Article subtypes (Article, NewsArticle, BlogPosting, ScholarlyArticle, TechArticle, Report) to **15** — adds `AdvertiserContentArticle`, `OpinionNewsArticle`, `SatiricalArticle`, `BackgroundNewsArticle`, `AnalysisNewsArticle`, `AskPublicNewsArticle`, `ReportageNewsArticle`, `ReviewNewsArticle`, `SocialMediaPosting`, `DiscussionForumPosting`. All inherit Article's required-prop set, so the maintenance cost is a single shared rule template. Sites emitting any of these subtypes no longer fall through to the 2.10 web-validator fallback. The `ARTICLE_SUBTYPES` (check-schema.py) and `ARTICLE_TYPES` (check-live-apex.py phase B) lists are also expanded to match.
+
+- **`--verbose-pass` passthrough on `audit.sh`.** The `audit_diff.py` script has supported `--verbose-pass` (expand collapsed PASS rows in the diff) since v1.0, but the `audit.sh` orchestrator didn't expose the flag. Mechanical wiring. Use as `bash audit.sh --diff --verbose-pass`.
+
+### Changed
+
+- **`audit.sh` startup version banner** sourced from `SKILL.md` frontmatter (`grep '^  version:'`). Was hardcoded `v0.4.0` — fully stale. The report-header version (`SKILL.md` line 159 of audit.sh) was already sourced from SKILL.md as of v0.9; this aligns the stdout banner with that.
+
+- **`templates/.launch-readiness.yml.example`** gains four new documented config blocks:
+  - Check 11 — title/description length thresholds (`title_length_min/max`, `description_length_min/max`) — carried-over v1.0 doc gap; the code accepted these as of v1.0 but they weren't shown in the example template.
+  - Check 11 — Brave Search indexability probe (`brave_api_key`, `brave_secret_path`, `brave_probe_query`).
+  - Check 02 — `cito_enabled` toggle.
+
+- **`checks/02-schema-graph.md`** § 2.4 enumerates all 15 Article subtypes and adds two table rows for CiTO typed-citation coverage + Speakable passage-length band.
+
+- **`checks/08-internal-link-quality.md`** adds § 8.5 (exact-match anchor ratio) + § 8.6 (per-target anchor-phrase concentration) with mechanism and threshold rationale.
+
+- **`checks/11-live-apex.md`** adds § 11.K (Brave indexability probe) and a new row in the "What this catches vs internal" table.
+
+### Audit-state shift (consumer-repo `thomasjankowski-site` example, post-v1.1)
+
+No fresh consumer-side audit run in this release notes block — v1.1 was a documentation + verified-claims pass driven by the seo_learnings verification sweep, not a re-audit against a live consumer. The new findings will surface on the next consumer run:
+
+- 8.5 / 8.6 will fire against any consumer with ≥10 inbound anchors to a target URL; sites that converged on hand-curated named-concept anchors during v0.7 typed-citation work should land cleanly in the PASS / INFO band.
+- 2.4.speakable_passage_length will fire on any consumer emitting Speakable selectors; first runs surface the passage-length distribution, then operator decides whether to reshape.
+- 2.4.cito_coverage will fire on any consumer emitting `citation[]`; the v0.7 typed-citation pass left thomasjankowski-site with [groundedBy]/[extendedBy]/[substantiatedBy]/[contradictedBy]/[discussedIn] markers, so this should land PASS.
+- 11.K stays silent until `brave_api_key` is configured. The opt-in nature is intentional — the skill must remain useful with zero API keys.
+
+### Declined (recorded in ROADMAP.md § Out-of-scope)
+
+- **EU AI Act Article 50 disclosure check.** Verified PASS as a regulatory fact (enforceable 2026-08-02; Article 50.2 imposes machine-readable marking on providers, Article 50.4 imposes visible disclosure on deployers publishing AI content on matters of public interest, editorial-control exemption covers most human-edited sites). Declined as a check because compliance auditing is a different audit class from SEO/IEO/GEO; enforcement priority is providers + large platforms, not individual blogs; the check would mostly false-positive against EU-scope consumers who qualify for the editorial-control exemption.
+- **134-167 word "Princeton GEO study" thesis target.** Attribution is fabricated; the Princeton paper measures content tactics, not passage length. The Speakable passage-length band (above) uses the xSeek 1M-query AIO empirical instead, framed honestly.
+- **"+34% structured-attribution-verb citation lift."** Number likely conflated with an unrelated Stacker earned-media-distribution study. Princeton's `Authoritative Voice` tactic was +8%, not +34%. No check added on this basis.
+- **"Submit to Brave Webmaster Tools."** Product does not exist (confirmed by Brave staff). Replaced with the Brave indexability probe (above).
+
+### Migration notes for v1.0 consumers
+
+No breaking changes. v1.0 invocations work unchanged.
+
+To opt into the Brave probe:
+1. Get a free-tier Brave Search API key at `api.search.brave.com` (Pro / Free / Pro AI tier; the audit's 1 req/run sits comfortably in the free tier's 2k/month quota).
+2. Drop in env (`BRAVE_API_KEY=...`) OR `.launch-readiness.yml` (`brave_api_key: ...`) OR SOPS path (`brave_secret_path: secrets/brave.enc.yaml`).
+3. Optionally override the default query (bare apex host) via `brave_probe_query: "Brand Name"`.
+
+To opt out of CiTO typed-citation coverage:
+```yaml
+# .launch-readiness.yml
+cito_enabled: false
+```
+
+To extract the `--verbose-pass` diff:
+```bash
+bash audit.sh --diff --verbose-pass
+```
+
 ## [1.0.0] — 2026-05-15
 
 **Production-ready.** v0.7 → v1.0 was a single-session arc post-F-1 apex flip (thomasjankowski.com going live earlier the same day) that exercised the skill against a real live origin for the first time. Three releases (v0.8 → v0.9 → v1.0) each landed with a real corpus running it; every false positive caught + fixed, every coverage gap closed.
