@@ -3,6 +3,94 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.2.0] — 2026-05-15
+
+Monitoring + indexing-state release. v1.0 + v1.1 established the audit
+surface; v1.2 adds the post-launch layer that catches drift over time
+(CrUX trend), per-piece content-vs-schema consistency (wordCount), the
+search-engine indexing-state cross-verification (Bing API + GSC
+snapshot), and an opinionated recipe for /loop / /schedule / cron /
+GitHub Actions wrapping. The skill now has three complementary layers:
+checks 1-10 source-side, check 11 live-apex behavior, check 12 indexing
+state.
+
+### Added
+
+- **Check 12 — Search Console cross-verification** (`scripts/check-search-console.py` + `checks/12-search-console.md`). New opt-in check answering the question SUBMITTED ≠ INDEXED. Two paths, either or both:
+
+  - **Bing Webmaster API**: opt-in via `bing_webmaster_api_key` (env / inline / SOPS) + `bing_webmaster_site_url` (or fallback to `canonical_origin`). The audit fetches `GetUrlSubmissionQuota` + `GetCrawlStats` and emits:
+    - `12.bing.quota` PASS — key + site verification both valid.
+    - `12.bing.crawl_errors` WARN/PASS — 7d aggregate crawl-error count.
+    - `12.bing.blocked_pages` INFO — robots.txt-blocked count (advisory).
+    - `12.bing.indexed_vs_sitemap` WARN/INFO/PASS — `indexed / sitemap_url_count` ratio (WARN <50%, INFO 50-80%, PASS ≥80%).
+    - `12.bing.api_error` / `12.bing.no_site` MV — config / API failures.
+
+    Site must be verified in Bing Webmaster Tools UI before API calls succeed. Free tier handles 1-2 GETs per audit run comfortably.
+
+  - **GSC snapshot reader**: opt-in via `gsc_index_snapshot_path` pointing at a JSON file the operator exports from GSC's Index Coverage report. Expected schema: `{exported_at, indexed_urls[], excluded_urls[{url, reason}]}`. Emits:
+    - `12.gsc.indexed_vs_sitemap` WARN/INFO/PASS — same ratio thresholds as Bing.
+    - `12.gsc.excluded_reasons` INFO — top-5 GSC exclusion reasons + counts; surfaces the "Crawled - currently not indexed" / "Soft 404" / etc. taxonomy.
+    - `12.gsc.snapshot_missing` / `12.gsc.snapshot_malformed` / `12.gsc.snapshot_shape` MV — file / shape failures.
+
+    Why no OAuth: GSC requires RSA-SHA256 JWT (service account) or 3-legged OAuth; both need non-stdlib crypto. The snapshot path keeps the skill stdlib-only at the cost of operator-side staleness (re-export periodically). Live GSC API integration is on v1.3+ ROADMAP.
+
+  - When neither path configured, emits a single `12.skipped` INFO and runs in <1s. Opt-in like check 11; default `--checks` block is still 1-10, pass `--checks 1-12` or `--checks 12` explicitly.
+
+- **Per-piece wordCount frontmatter validation (check 2.4.word_count_drift)**. Extends the v0.4 per-page HTML sampling: for each sampled article, the audit now resolves the Article node's declared `wordCount`, extracts the rendered body word count from `<article>` / `<main>` / `<p>` fallback (stripping `<script>` / `<style>` / `<nav>` / `<aside>` / `<header>` / `<footer>` / `<figure>` first), and compares. Drift >10% emits a WARN with the declared / actual / percentage. Pages with `<100` rendered words are skipped (noise floor). Catches the silent drift class external auditors can't see (they only have the rendered HTML, internally consistent against itself but divergent from the schema-graph claim).
+
+- **`scripts/crux-trend.py`**. New skill-side helper. Reads `.launch-readiness-report.json`, extracts the `4.crux.<scope>_<metric>` finding family (p75 + category for page / origin × LCP / CLS / INP), appends one row per audit run to `.launch-readiness-crux-trend.csv` at the consumer repo root. Supports `--summary` (always print direction summary) / `--summary-only` (skip the append, just print). Direction arrows: `↘` p75 dropped ≥5% (improving), `↗` rose ≥5% (regressing), `→` within ±5% noise. Category changes across FAST/AVERAGE/SLOW thresholds flagged as `(improve)` / `(regress)`. Stdlib-only.
+
+- **`templates/scheduled-audit.md`**. Opinionated recipe for post-launch recurring audits. Documents four wrapper patterns: `/loop`, `/schedule`, system crontab, GitHub Actions. Covers cadence-by-use-case (weekly default; daily for newly-launched or daily-publish sites; monthly for established), what scheduled audits catch (external link rot, CDN trailing-slash drift, sitemap/link-graph drift, CrUX regression, etc.), what they don't catch (content-quality regression, voice drift), and a "stability before scheduling" pre-flight checklist. Template-only; skill ships no cron wiring (consumer-side infrastructure).
+
+### Changed
+
+- **`audit.sh`** registers check 12 alongside the existing 11. Default `--checks` block unchanged (still 1-10); check 12 is opt-in like check 11.
+
+- **`templates/.launch-readiness.yml.example`** gains a new "Check 12" section block: `bing_webmaster_api_key` / `bing_webmaster_secret_path` / `bing_webmaster_site_url` / `gsc_index_snapshot_path`.
+
+- **`SKILL.md` description + check count** bumped from 11 to 12 categories.
+
+- **`README.md`** Status block + capability table updated for 12 checks. The pre-launch / post-launch framing now reads as "three complementary layers" rather than "pre-flip + post-flip pair."
+
+- **`ROADMAP.md`** § "v1.2 candidates" cleared (all shipped); GSC live-API integration moved to v1.3+ holding area with the auth-complexity caveat documented.
+
+### Audit-state shift (consumer-repo `thomasjankowski-site` example, post-v1.2)
+
+No fresh consumer-side audit run in this release notes block — v1.2 ships infrastructure that's silent until configured. Expected behavior on the canonical consumer:
+
+- 2.4.word_count_drift fires once per audit run, with PASS/WARN depending on whether the schema emitter computes `wordCount` from compiled MDX output (matching rendered body) or from raw markdown source (typically inflates the count by 5-15%).
+- crux-trend.py starts collecting rows on the next audit run; first useful direction summary appears after the second run.
+- Check 12 stays silent (no `bing_webmaster_api_key` configured on the canonical consumer pre-Bing-verification).
+
+### Migration notes for v1.1 consumers
+
+No breaking changes. v1.1 invocations work unchanged.
+
+To opt into check 12 (Bing path):
+1. Verify your site in Bing Webmaster Tools UI (DNS TXT / meta tag / XML).
+2. Settings → API Access → Generate key.
+3. Drop the key in env `BING_WEBMASTER_API_KEY` OR `.launch-readiness.yml` (`bing_webmaster_api_key: ...`) OR SOPS (`bing_webmaster_secret_path`).
+4. Run with `--checks 1-12` (or `--checks 12` alone).
+
+To opt into check 12 (GSC snapshot path):
+1. Export GSC Index Coverage report (Indexing → Pages → Export → JSON).
+2. Save to a stable path in the repo or build-output dir.
+3. Set `gsc_index_snapshot_path: <relative-path>` in `.launch-readiness.yml`.
+4. Re-export periodically (audit reports `exported_at` so freshness is visible).
+5. Run with `--checks 1-12`.
+
+To start the CrUX trend CSV:
+```bash
+bash audit.sh --checks 1-12 --report-only
+python3 .claude/skills/IEO-launch-audit/scripts/crux-trend.py
+```
+
+The first run creates the CSV with one row; the second and subsequent runs append + emit a direction summary.
+
+### Deferred to v1.3+
+
+- **GSC live-API integration** (service-account JWT or 3-legged OAuth). Auth complexity is the open question — RSA-SHA256 signing needs `cryptography` (non-stdlib) or shelling out to `openssl`. The v1.2 snapshot-reader path is the workaround. v1.3 will pick a path explicitly.
+
 ## [1.1.0] — 2026-05-15
 
 Post-v1.0 verification pass: a `seo_learnings.md` artifact carried over from the parent repo's extraction was put through a four-subagent verification sweep. Three claims survived with revisions and are shipped here; two fabricated/misattributed claims were declined (EU AI Act Article 50 disclosure check declined entirely as out-of-scope regulatory-compliance auditing, recorded in ROADMAP.md). The release also folds in the two leftover ROADMAP-side v1.1 candidates (CiTO @context optionality, narrow Article subtypes, `audit-diff --verbose-pass` passthrough). No breaking changes; all additions are opt-in or default-on with the same severity ceiling as prior advisory checks.

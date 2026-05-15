@@ -229,6 +229,34 @@ jsonld_sample_size: 10
 web_validator_fallback: false
 
 # -------------------------------------------------------------------
+# Check 12 -- Search Console cross-verification (v1.2, opt-in)
+# -------------------------------------------------------------------
+
+# Bing Webmaster API path. When key + site are configured, the audit
+# fetches GetUrlSubmissionQuota + GetCrawlStats and cross-verifies
+# indexed-count vs sitemap URL count. The site must be verified in
+# Bing Webmaster Tools UI before API calls succeed. Free tier; one or
+# two GET requests per audit run.
+#
+# bing_webmaster_api_key: "..."                   # inline; not recommended for commit
+# bing_webmaster_secret_path: secrets/bing.enc.yaml  # SOPS-encrypted with
+#                                                    # BING_WEBMASTER_API_KEY: <key>
+# bing_webmaster_site_url: https://example.com    # defaults to canonical_origin
+
+# GSC snapshot path. Operator exports the Index Coverage report from
+# Google Search Console UI (Indexing -> Pages -> Export -> JSON) and
+# saves to this path. The audit reads the snapshot + cross-verifies
+# against the live sitemap. Avoids OAuth complexity in the skill
+# itself; trade is operator-side staleness (re-export periodically).
+#
+# Expected JSON shape:
+#   { "exported_at": "<ISO date>",
+#     "indexed_urls": ["<url>", ...],
+#     "excluded_urls": [{"url": "...", "reason": "..."}, ...] }
+#
+# gsc_index_snapshot_path: docs/audits/gsc-index-2026-05.json
+
+# -------------------------------------------------------------------
 # Check 11 -- Live-apex audit
 # -------------------------------------------------------------------
 

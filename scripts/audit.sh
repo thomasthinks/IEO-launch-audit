@@ -137,6 +137,7 @@ declare -A CHECK_NAMES=(
   [9]="Content tactics"
   [10]="External backlinks"
   [11]="Live-apex audit"
+  [12]="Search Console cross-verification"
 )
 
 # Map check number to script name
@@ -152,6 +153,7 @@ declare -A CHECK_SCRIPTS=(
   [9]="content-tactics"
   [10]="backlinks"
   [11]="live-apex"
+  [12]="search-console"
 )
 
 # Emit report header

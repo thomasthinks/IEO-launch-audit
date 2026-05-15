@@ -6,15 +6,15 @@ auditors (Screaming Frog, Sitebulb, Ahrefs, Lighthouse, Schema Markup
 Validator, Google Rich Results Test) will flag, plus the LLM-citation-side
 gaps the SEO tool ecosystem still under-covers.
 
-**Status:** 1.1.0 (production-ready, post-launch hardening pass + verified
-v1.1 candidates). v1.0 declared production-ready against a real live origin
-with zero false positives; v1.1 adds verified findings from a second
-research-verification pass: Brave Search indexability probe (Claude-citation
-eligibility), exact-match anchor ratio (Google 2024-leak `phraseAnchorSpamFraq`
-signal), Speakable passage-length band (xSeek AIO empirical), CiTO typed-
-citation coverage (opt-out via `cito_enabled: false`), long-tail Article
-subtypes promoted to offline rules, `--verbose-pass` passthrough on the
-diff tool. See `CHANGELOG.md` for the full v0.5 → v1.1 roll-up.
+**Status:** 1.2.0 (monitoring + indexing-state release). v1.0 declared
+production-ready; v1.1 added verified post-extraction candidates (Brave probe,
+exact-match anchor, Speakable length band, CiTO toggle, long-tail subtypes);
+v1.2 adds the post-launch monitoring + indexing-state layer: per-piece
+wordCount frontmatter validation, `crux-trend.py` CSV-trend helper, new
+opt-in **check 12** (Bing Webmaster API + GSC snapshot cross-verification),
+and a `templates/scheduled-audit.md` recipe for /loop / /schedule / cron /
+GitHub Actions wrapping. See `CHANGELOG.md` for the full v0.5 → v1.2
+roll-up.
 
 Add `.launch-readiness-report.*` to your repo's `.gitignore` to keep
 generated reports out of version control. The reports are local artifacts
@@ -22,7 +22,7 @@ that change on every run.
 
 ## What this skill does
 
-Eleven audit categories, each with cite-able rationale and concrete fixes:
+Twelve audit categories, each with cite-able rationale and concrete fixes:
 
 | # | Category | Covers |
 |---|---|---|
@@ -36,13 +36,15 @@ Eleven audit categories, each with cite-able rationale and concrete fixes:
 | 8 | Internal-link quality | Catches TFIDF-distinctive-phrase trap. Recommends LLM-curated or hand-curated inline + Read-next footer |
 | 9 | Content tactics | GEO content-side levers (Princeton/Georgia Tech KDD 2024 + 2025-2026 follow-ups). Advisory; does not auto-fix prose |
 | 10 | External backlinks | Free-tier Wayback CDX + Common Crawl + Open PageRank (with `OPR_API_KEY`). Observational, no FAIL severity |
-| 11 | Live-apex audit | Sitemap reachability, rendered-HTML JSON-LD, per-page meta drift, inline-link 404 detection, security-header consistency, discovery-artifact reachability, Screaming-Frog-parity title/H1/meta hygiene, redirect-chain audit, sitemap-vs-link reconciliation, duplicate meta-description detection. Opt-in (requires live origin) |
+| 11 | Live-apex audit | Sitemap reachability, rendered-HTML JSON-LD, per-page meta drift, inline-link 404 detection, security-header consistency, discovery-artifact reachability, Screaming-Frog-parity title/H1/meta hygiene, redirect-chain audit, sitemap-vs-link reconciliation, duplicate meta-description detection, Brave Search indexability probe (Claude-citation eligibility, v1.1). Opt-in (requires live origin) |
+| 12 | Search Console cross-verification | Bing Webmaster API (GetUrlSubmissionQuota + GetCrawlStats; indexed-vs-sitemap delta, crawl errors, blocked pages). Google Search Console snapshot path (operator-exported JSON; indexed-vs-sitemap + excluded-reason taxonomy). v1.2, opt-in (network + operator-side export) |
 
 Checks 1-10 run against the source repo + built artifacts (`dist/`,
-`public/`, `out/`). Check 11 runs against the live apex and catches the
-class of finding paid crawlers flag against rendered HTML (CDN-side
-canonicalization, host-config glob mismatches, slug-rename orphans). The
-two are complementary.
+`public/`, `out/`). Checks 11 + 12 run against the live apex (check 11)
+and the search-engine indexing layer (check 12) and catch the class of
+finding paid crawlers and SaaS rank-trackers flag (CDN-side
+canonicalization, host-config glob mismatches, slug-rename orphans,
+indexed-vs-submitted deltas). The three layers are complementary.
 
 ## Why this skill exists
 

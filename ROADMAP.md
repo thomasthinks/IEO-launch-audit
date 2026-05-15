@@ -4,53 +4,35 @@ What's beyond v1.0. Not a commitment; a holding area for candidates ranked by
 "would this catch a class of finding the skill misses today, and is it
 portable across consumers."
 
-## v1.2 candidates
+## v1.3+ candidates
 
-### GSC + Bing Webmaster API integration
+### GSC live-API integration (service-account JWT or 3-legged OAuth)
 
-The skill currently reports IndexNow ping success (check 6) and PSI / CrUX
-field-data (check 4), but has no read-back from Google Search Console or
-Bing Webmaster Tools for indexing coverage, crawl errors, mobile usability,
-or search performance. Adding a `gsc_credentials_path:` + `bing_api_key:`
-config block (graceful-degrade when absent, per standing principles) would
-let check 7 (sitemap accuracy) cross-verify "submitted" against "indexed"
-counts, and check 11 (live-apex audit) flag specific URLs flagged in the
-Index Coverage report.
+v1.2 shipped the GSC snapshot-reader path (operator exports Index Coverage
+JSON; audit reads it). The trade is operator-side staleness — re-export
+periodically. v1.3 would close that loop with live GSC API integration:
+service-account credentials → JWT signed with RSA-SHA256 → OAuth token →
+`searchconsole.googleapis.com/v1/sites/<site>/searchAnalytics/query` and
+`v1/urlInspection/index:inspect`.
 
-Auth complexity is the open question — GSC requires service-account or OAuth
-flow; Bing is API-key. Probably warrants a `references/`-side doc on auth
-setup that mirrors the PSI key flow. Deferred from v1.1 because the OAuth
-surface is meaningful net-new auth complexity.
+Auth complexity is the open question. RSA-SHA256 signing isn't in Python's
+stdlib (`hashlib` has the hash, but no RSA private-key signing). Two paths:
+- **Optional dependency on `cryptography`** — clean code, but breaks the
+  stdlib-only stance.
+- **Shell out to `openssl rsa`** — keeps stdlib-only at the cost of a new
+  binary dependency (openssl is near-universal on Linux/Mac; less reliable
+  on Windows but the rest of the skill assumes Unix-ish env).
 
-## v1.2+ candidates
+Decision deferred to when a consumer pushes for it. Until then, the
+snapshot-reader path (v1.2) is the working answer.
 
-### Scheduled re-curation routines
+### Real-user CrUX dashboard / longer-trend analysis
 
-The skill is currently invoked manually or per-build. For sites already
-launched, a `/loop weekly` (or scheduled-routine via Claude Code's
-`schedule` skill) would surface drift over time: new dead links from
-external rot, sitemap-vs-sitemap discrepancies after silent slug renames,
-schema-graph node count divergence from piece count, etc. Probably ships
-as a `templates/scheduled-audit.md` skill-side recipe rather than skill
-code.
-
-### Real-user CrUX dashboard
-
-v1.0 parses CrUX field-data when PSI returns it, but the skill's output is
-a snapshot per run. A consumer with a long enough post-launch tail could
-benefit from a `crux-trend.py` helper that appends each run's CrUX
-distribution to a local CSV + emits a trend summary. Tradeoff: this drifts
-from "audit per build" toward "monitoring layer," which is arguably
-out-of-scope. Holding for now.
-
-### Per-piece `wordCount` / `readTime` frontmatter validation
-
-Consumers like `thomasjankowski-site` carry `wordCount` + `readTime` in
-piece frontmatter and emit them into JSON-LD. Check 2 currently validates
-the JSON-LD shape but not the source-of-truth: does the frontmatter
-`wordCount` actually match the rendered piece's word count? Drift here is
-the kind of silent error external auditors don't catch (because they only
-see the rendered HTML, which is internally consistent).
+v1.2 shipped `crux-trend.py` (append-per-run CSV + direction summary). The
+next layer would be a "show me the last N runs as ASCII line charts" or
+"alert when category regresses 2 runs in a row" feature. Tradeoff: this
+drifts from "audit per build" toward "monitoring product," which is
+arguably out-of-scope. Holding for now; v1.2's CSV is the substrate.
 
 ## Standing principles (gate for what gets in)
 

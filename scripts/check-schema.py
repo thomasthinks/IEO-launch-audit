@@ -213,6 +213,16 @@ def _extract_validator_errors(response: dict) -> list[dict]:
 # engines emit. Frame as INFO (single-source empirical), not WARN/FAIL.
 SPEAKABLE_PASSAGE_MIN, SPEAKABLE_PASSAGE_MAX = 100, 300
 
+# v1.2 — wordCount drift tolerance for check 2.4.word_count_drift.
+# Source-of-truth is the rendered <article> / <main> / fallback body
+# word count; declared wordCount in JSON-LD should track within this
+# fraction. Outside the band → WARN — drift this large signals the
+# emitter is computing word count from a different source than the
+# rendered piece (e.g., raw markdown vs. compiled JSX output, or a
+# stale frontmatter snapshot vs. live body).
+WORD_COUNT_DRIFT_TOLERANCE = 0.10  # 10%
+WORD_COUNT_MIN_BODY = 100  # noise floor — pages with <100 rendered words are skipped
+
 
 def _resolve_simple_selector_text(html: str, selector: str) -> str | None:
     """Resolve a simple cssSelector against rendered HTML and return the
@@ -272,6 +282,67 @@ def _resolve_simple_selector_text(html: str, selector: str) -> str | None:
 def _count_words(text: str) -> int:
     """Whitespace-split word count after HTML strip."""
     return len([w for w in text.split() if w.strip()])
+
+
+def _extract_body_words(html: str) -> int | None:
+    """Count rendered body words for a piece's HTML. Tries <article>,
+    then <main>, then all <p> tags as fallback. Returns None if no
+    structural body could be located.
+
+    Conservative: strips `<script>`, `<style>`, `<nav>`, `<aside>`,
+    `<header>`, `<footer>`, and `<figure>` blocks before counting so
+    page chrome doesn't inflate the count vs the editorial body.
+    """
+    # Strip non-body sections that don't represent editorial content.
+    cleaned = html
+    for tag in ("script", "style", "nav", "aside", "header", "footer", "figure"):
+        cleaned = re.sub(
+            rf"<{tag}\b[^>]*>.*?</{tag}>", " ", cleaned, flags=re.DOTALL | re.IGNORECASE
+        )
+    # Prefer <article>; fall back to <main>; fall back to concatenated <p>.
+    for tag in ("article", "main"):
+        m = re.search(rf"<{tag}\b[^>]*>(.*?)</{tag}>", cleaned, re.DOTALL | re.IGNORECASE)
+        if m:
+            inner = re.sub(r"<[^>]+>", " ", m.group(1))
+            return _count_words(inner)
+    paragraphs = re.findall(r"<p\b[^>]*>(.*?)</p>", cleaned, re.DOTALL | re.IGNORECASE)
+    if paragraphs:
+        combined = " ".join(re.sub(r"<[^>]+>", " ", p) for p in paragraphs)
+        return _count_words(combined)
+    return None
+
+
+def _find_article_with_wordcount(parsed_jsonld) -> dict | None:
+    """Walk a parsed JSON-LD object for the first Article-subtype node
+    with a `wordCount` property. Searches @graph nesting + root-level.
+    Returns None if no such node found."""
+    candidates: list = []
+    if isinstance(parsed_jsonld, list):
+        for item in parsed_jsonld:
+            candidates.extend(_walk_for_articles(item))
+    else:
+        candidates.extend(_walk_for_articles(parsed_jsonld))
+    for n in candidates:
+        if isinstance(n.get("wordCount"), int):
+            return n
+    return None
+
+
+def _walk_for_articles(node) -> list[dict]:
+    """Yield Article-subtype dicts from a JSON-LD node (root or nested
+    inside @graph). Type check uses ARTICLE_SUBTYPES."""
+    out: list[dict] = []
+    if not isinstance(node, dict):
+        return out
+    t = node.get("@type")
+    if isinstance(t, str) and t in ARTICLE_SUBTYPES:
+        out.append(node)
+    elif isinstance(t, list) and any(tt in ARTICLE_SUBTYPES for tt in t if isinstance(tt, str)):
+        out.append(node)
+    if isinstance(node.get("@graph"), list):
+        for child in node["@graph"]:
+            out.extend(_walk_for_articles(child))
+    return out
 
 
 def _walk_speakable_nodes(parsed_jsonld) -> list:
@@ -961,6 +1032,10 @@ def run(args) -> CheckResult:
         # WARN: empirical basis is single-source (xSeek AIO dataset).
         speakable_word_counts: list[tuple[str, int]] = []  # (page_path, words)
         speakable_unresolved: list[tuple[str, str]] = []  # (page_path, selector)
+        # 2.4.word_count_drift tracking (v1.2) — per-page (declared, actual)
+        # wordCount comparison. Each entry is (page_path, declared, actual).
+        word_count_drift: list[tuple[str, int, int]] = []
+        word_count_ok: int = 0
         for h in sample_html:
             html_text = h.read_text(encoding="utf-8")
             m = re.search(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', html_text, re.DOTALL)
@@ -973,6 +1048,23 @@ def run(args) -> CheckResult:
             except json.JSONDecodeError:
                 malformed_jsonld += 1
                 continue
+            # 2.4.word_count_drift — declared wordCount vs rendered body.
+            # Skip pages with very short rendered bodies (noise floor) and
+            # pages whose Article emitter doesn't declare wordCount.
+            wc_node = _find_article_with_wordcount(parsed)
+            if wc_node is not None:
+                declared_wc = wc_node.get("wordCount")
+                actual_wc = _extract_body_words(html_text)
+                if (
+                    isinstance(declared_wc, int)
+                    and actual_wc is not None
+                    and actual_wc >= WORD_COUNT_MIN_BODY
+                ):
+                    drift = abs(declared_wc - actual_wc) / actual_wc
+                    if drift > WORD_COUNT_DRIFT_TOLERANCE:
+                        word_count_drift.append((str(h), declared_wc, actual_wc))
+                    else:
+                        word_count_ok += 1
             # Walk Speakable nodes and resolve their cssSelectors against
             # this page's HTML.
             for sp_node in _walk_speakable_nodes(parsed):
@@ -1073,6 +1165,55 @@ def run(args) -> CheckResult:
                         "Stdlib selector grammar supports [attr], [attr=value], "
                         "#id, .class, tagname. Compound selectors (descendant, "
                         "child, multiple-class) are out of scope."
+                    ),
+                ))
+
+            # 2.4.word_count_drift — declared wordCount vs rendered body
+            # word count, per sampled page (v1.2). External auditors can't
+            # see this drift because they only have the rendered HTML —
+            # internally consistent against itself but silently divergent
+            # from the schema-graph claim.
+            total_wc_checked = word_count_ok + len(word_count_drift)
+            if total_wc_checked == 0:
+                # No Article-with-wordCount sampled; nothing to compare.
+                # Quiet — Article completeness is already audited in 2.4.
+                pass
+            elif word_count_drift:
+                sample_drift = [
+                    f"{Path(p).parent.name}/{Path(p).name} (declared {d}, actual {a}, {(abs(d - a) / a) * 100:.0f}% drift)"
+                    for p, d, a in word_count_drift[:5]
+                ]
+                result.findings.append(Finding(
+                    id="2.4.word_count_drift", severity="WARN",
+                    title=(
+                        f"{len(word_count_drift)}/{total_wc_checked} sampled article(s) "
+                        f"have declared wordCount drifting >{int(WORD_COUNT_DRIFT_TOLERANCE * 100)}% "
+                        "from rendered body"
+                    ),
+                    current=sample_drift,
+                    expected=(
+                        f"Declared wordCount within ±{int(WORD_COUNT_DRIFT_TOLERANCE * 100)}% "
+                        "of rendered <article>/<main> body word count"
+                    ),
+                    fix_safety="manual",
+                    fix_action=(
+                        "Verify the schema emitter computes wordCount from the same "
+                        "source as the rendered body (post-MDX compile, not pre-MDX "
+                        "source). Stale frontmatter snapshots that survive content "
+                        "edits are the most common drift cause."
+                    ),
+                    notes=(
+                        "Body extraction strips <script>/<style>/<nav>/<aside>/"
+                        "<header>/<footer>/<figure> before counting. Pages with "
+                        f"<{WORD_COUNT_MIN_BODY} rendered words are skipped (noise floor)."
+                    ),
+                ))
+            else:
+                result.findings.append(Finding(
+                    id="2.4.word_count_drift", severity="PASS",
+                    title=(
+                        f"All {total_wc_checked} sampled article(s) have declared "
+                        f"wordCount within ±{int(WORD_COUNT_DRIFT_TOLERANCE * 100)}% of rendered body"
                     ),
                 ))
 
