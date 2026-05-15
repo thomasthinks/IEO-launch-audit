@@ -1,0 +1,36 @@
+# <SITE_NAME> — full-text dump for LLM ingestion
+
+> This file is the plain-text companion to llms.txt. It contains the
+> author's anchor / pillar pieces in full prose form, suitable for
+> direct LLM ingestion via /browse, MCP, or RAG pipelines.
+>
+> The full piece catalog (~250 pieces) is NOT included here — most LLM
+> ingestion windows can't accommodate it. The subset below is the
+> author-selected anchor set.
+
+---
+
+## Title 1
+
+URL: <CANONICAL_ORIGIN>/writing/slug-1
+Author: <AUTHOR_NAME>
+Published: <ISO_DATE>
+Pillar: <PILLAR>
+
+<Full body prose, plain text. Strip markdown formatting; keep paragraph
+breaks as blank lines. Strip inline links to URLs in parentheses.>
+
+---
+
+## Title 2
+
+URL: <CANONICAL_ORIGIN>/writing/slug-2
+Author: <AUTHOR_NAME>
+Published: <ISO_DATE>
+Pillar: <PILLAR>
+
+<Full body prose.>
+
+---
+
+<-- repeat for each anchor piece -->

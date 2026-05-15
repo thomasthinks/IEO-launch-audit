@@ -1,0 +1,81 @@
+# robots.txt — managed by launch-readiness-audit skill
+# https://github.com/.../launch-readiness-audit
+# Last updated: <DATE>
+
+User-agent: *
+Allow: /
+
+Sitemap: <CANONICAL_ORIGIN>/sitemap.xml
+Sitemap: <CANONICAL_ORIGIN>/image-sitemap.xml
+
+# --- Citation-class bots (allow for max LLM-search exposure) ---
+# These crawl in response to user queries and produce attributed citations.
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Applebot
+Allow: /
+
+User-agent: DuckAssistBot
+Allow: /
+
+User-agent: MistralAI-User
+Allow: /
+
+User-agent: GoogleOther
+Allow: /
+
+User-agent: Google-NotebookLM
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+User-agent: Meta-ExternalAgent
+Allow: /
+
+# --- Training-class bots (policy: default Allow for editorial / no-paywall sites) ---
+# These crawl for training-set inclusion in foundation models.
+# Allow = the work joins LLM parametric knowledge = future citations.
+# Switch any of these to Disallow if you have paywall / proprietary content.
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+# --- Bytespider (TikTok/ByteDance) ---
+# Ignores robots.txt; aggressive crawl; no citation upside.
+# Disallow here is a signal only; enforce at edge/WAF layer.
+
+User-agent: Bytespider
+Disallow: /

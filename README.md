@@ -1,0 +1,178 @@
+# IEO-launch-audit
+
+A Claude Code skill that audits a static / SSG site's SEO / IEO / GEO
+posture before launch and verifies it post-launch. Catches what external
+auditors (Screaming Frog, Sitebulb, Ahrefs, Lighthouse, Schema Markup
+Validator, Google Rich Results Test) will flag, plus the LLM-citation-side
+gaps the SEO tool ecosystem still under-covers.
+
+**Status:** 0.9.0 (PageSpeed Insights + CrUX field-data integration;
+Cloudflare WAF probe; live-apex Screaming-Frog-parity audit; typed-citation
+graph scaffold; editorial-date sitemap mode; web-validator fallback for
+long-tail Schema.org @types). See `CHANGELOG.md` for the full v0.5 → v0.9
+roll-up.
+
+Add `.launch-readiness-report.*` to your repo's `.gitignore` to keep
+generated reports out of version control. The reports are local artifacts
+that change on every run.
+
+## What this skill does
+
+Eleven audit categories, each with cite-able rationale and concrete fixes:
+
+| # | Category | Covers |
+|---|---|---|
+| 1 | Technical SEO | HTTP headers, canonical URLs, 404 status, mobile-first viewport, hero-image attrs, sitemap lastmod accuracy |
+| 2 | Schema.org graph | JSON-LD validation + completeness (WebSite root, absolute @id URLs, ImageObject, ItemList nesting, Speakable selector array); opt-in web-validator fallback for long-tail @types |
+| 3 | AI-bot directives | robots.txt + llms.txt + llms-full.txt. Citation-class + training-class user-agent coverage. Bytespider edge-block + optional Cloudflare WAF API verification |
+| 4 | Core Web Vitals | LCP / INP / CLS targets. Opt-in PageSpeed Insights v5 with CrUX field-data parsing; delegates to vercel:performance-optimizer if available; Lighthouse CLI fallback |
+| 5 | Wikidata entity graph | Person sameAs to Q-ID, P856 (official website) reciprocity. Operator-side checklist |
+| 6 | IndexNow | Key file + publish-hook ping flow. Bing/Yandex/Naver coverage |
+| 7 | Sitemap accuracy | lastmod matches real mtimes (file_mtime mode) or editorial dates from frontmatter (editorial mode for backdated catalogues). Sitemap submitted to GSC + Bing |
+| 8 | Internal-link quality | Catches TFIDF-distinctive-phrase trap. Recommends LLM-curated or hand-curated inline + Read-next footer |
+| 9 | Content tactics | GEO content-side levers (Princeton/Georgia Tech KDD 2024 + 2025-2026 follow-ups). Advisory; does not auto-fix prose |
+| 10 | External backlinks | Free-tier Wayback CDX + Common Crawl + Open PageRank (with `OPR_API_KEY`). Observational, no FAIL severity |
+| 11 | Live-apex audit | Sitemap reachability, rendered-HTML JSON-LD, per-page meta drift, inline-link 404 detection, security-header consistency, discovery-artifact reachability, Screaming-Frog-parity title/H1/meta hygiene, redirect-chain audit, sitemap-vs-link reconciliation, duplicate meta-description detection. Opt-in (requires live origin) |
+
+Checks 1-10 run against the source repo + built artifacts (`dist/`,
+`public/`, `out/`). Check 11 runs against the live apex and catches the
+class of finding paid crawlers flag against rendered HTML (CDN-side
+canonicalization, host-config glob mismatches, slug-rename orphans). The
+two are complementary.
+
+## Why this skill exists
+
+The 2026 SEO/GEO/IEO landscape is fragmented:
+
+- **SEO tooling** (Ahrefs, Semrush, Screaming Frog, Sitebulb) covers the
+  technical-SEO + content-quality space but misses LLM-side citation
+  posture.
+- **GEO tooling** (Profound, AirOps, TryProfound) tracks LLM citation rates
+  but doesn't audit the structural inputs.
+- **IEO best practices** (structured data, entity graph, Speakable) sit in
+  Schema.org documentation + Google/Bing/Anthropic policy posts but no
+  tool synthesizes them.
+
+This skill bundles the synthesis into a single pre-flip + post-flip
+audit that:
+- Runs in ~5 minutes against any static/SSG repo (checks 1-10);
+  ~2-3 minutes extra for check 11 against a live origin (more with PSI).
+- Reports findings with cite-able rationale per finding.
+- Optionally applies safe fixes (header config, llms.txt expansion,
+  robots.txt user-agents, Speakable arrays, absolute @ids).
+- Surfaces what requires operator decision (Wikidata edits, GSC
+  verification, training-bot policy, host-config changes).
+- Stays free + stdlib-only: no paid APIs, no `requests`/`httpx`
+  dependency, no auth surface beyond optional opt-in API keys
+  (`PAGESPEED_API_KEY`, `OPR_API_KEY`, `CLOUDFLARE_API_TOKEN`).
+
+## Quick start
+
+```bash
+# Install (clone or copy to .claude/skills/ in your repo OR ~/.claude/skills/ globally)
+cp -r path/to/IEO-launch-audit ./.claude/skills/
+
+# Run via Claude Code (default: checks 1-10)
+/IEO-launch-audit
+
+# Include the live-apex check (requires the apex to be reachable)
+bash .claude/skills/IEO-launch-audit/scripts/audit.sh \
+  --checks 1,2,3,4,5,6,7,8,9,10,11 --report-only
+
+# Diff against the previous run (auto-rotated)
+bash .claude/skills/IEO-launch-audit/scripts/audit.sh --report-only --diff
+```
+
+## Tech-stack support
+
+| Stack | Status | Notes |
+|---|---|---|
+| Vercel + Next.js | first-class | uses vercel:performance-optimizer for check 4, vercel.json templates for headers |
+| Vercel + static | supported | header config via vercel.json |
+| Netlify | supported | header config via _headers; uses Lighthouse for check 4 |
+| Cloudflare Pages | supported | header config via Workers / _headers; uses Lighthouse for check 4; check 3.4 WAF probe available |
+| GitHub Pages | partial | no header control; flagged WARN on check 1 |
+| Astro / Hugo / Jekyll | supported | static output; same checks |
+| Plain static HTML | supported | minimum viable surface; some checks skipped |
+
+## Configuration
+
+`<repo>/.launch-readiness.yml` overrides defaults. See
+`templates/.launch-readiness.yml.example` for an annotated template
+documenting every config key. SKILL.md "Configuration" section covers
+the rationale for the load-bearing keys.
+
+Notable opt-in surfaces:
+- `pagespeed_api_key` / `pagespeed_secret_path` — PSI v5 + CrUX field data for check 4.
+- `cloudflare_zone_id` / `cloudflare_secret_path` — Cloudflare WAF API probe for check 3.4 (Bytespider edge-block verification).
+- `sitemap_lastmod_mode: editorial` + `slug_to_frontmatter_map` — editorial-date sitemap mode for backdated catalogues (check 7).
+- `web_validator_fallback: true` — POST uncovered @types to validator.schema.org (check 2.10).
+- `live_probe_origin` — separates "what URL shape to canonicalize on" (canonical_origin) from "what URL the audit curls right now" (live_probe_origin); useful pre-flip when the apex DNS doesn't resolve yet.
+- `indexnow_key` — additionally probes `/<key>.txt` reachability in check 11 phase F.
+
+## Output
+
+Three artifacts at the repo root after each run:
+- `.launch-readiness-report.md` — human-readable
+- `.launch-readiness-report.json` — machine-readable (for CI gating)
+- `.launch-readiness-report.prev.json` — previous run, auto-rotated;
+  used by `audit_diff.py` to surface what moved between runs
+
+All gitignored by default (the skill emits a `.gitignore` snippet on
+first run).
+
+`scripts/audit_diff.py --current X --prior Y` emits a markdown diff
+grouped by check, separating new findings (regressions) from resolved
+findings (wins), with severity-change and content-drift sections. Pass
+`--verbose-pass` to expand collapsed PASS rows.
+
+## Authoring philosophy
+
+Each check answers four questions:
+
+1. **Why does this matter?** Specific cited source(s). No vibes.
+2. **What's checked?** A concrete assertion that produces PASS / WARN /
+   FAIL. No subjective judgement.
+3. **What's the fix?** A copy-pasteable code or config diff. No "consider
+   adding."
+4. **Is the fix safe to auto-apply?** Tagged `safe` or `manual`. Auto-fix
+   never touches anything tagged `manual`.
+
+Each check ages out as best practice shifts. Threshold changes are
+versioned in `CHANGELOG.md`.
+
+## What this skill is NOT
+
+- Not a Lighthouse replacement. Lighthouse is more complete on technical
+  SEO + accessibility + performance. This skill delegates to Lighthouse
+  for check 4 (or PSI when configured) and complements it for the other
+  10 checks.
+- Not a content auditor. Check 9 (Content tactics) is advisory and lists
+  structural recommendations; it doesn't grade prose quality.
+- Not an ongoing-rank tracker. Use an SEO suite (Ahrefs, Semrush) for
+  ongoing keyword/rank monitoring. This skill is pre-launch posture +
+  recurring health-check, not continuous rank tracking.
+- Not a generic "best-practices" linter. Each check derives from cited
+  2025-2026 best-practice research. When best practice shifts, the check
+  updates; this is opinionated by design.
+- Not a paid-API consumer. Every network surface is free-tier or
+  free-with-opt-in-key (PSI, Open PageRank, Cloudflare). Backlinks via
+  Wayback + Common Crawl, not Ahrefs/Moz/Majestic.
+
+## License
+
+(decision pending) — author has not chosen a license. Treat as
+all-rights-reserved until a license is added.
+
+## Authoring credit
+
+Designed during the May 2026 pre-flip audit of
+[`thomasjankowski-site`](https://github.com/thomasthinks/thomasjankowski-site).
+The research underpinning the check thresholds derives from a four-agent
+parallel research pass; see `references/research-2026-05.md`.
+
+## Contributing
+
+This is a single-author skill. If it becomes useful enough to publicize,
+contributing guidelines + threshold-change RFC process will be documented
+here. For now: open an issue (TBD where) or fork.

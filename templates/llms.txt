@@ -1,0 +1,27 @@
+# <SITE_NAME>
+
+> <ONE_PARAGRAPH_SUMMARY> — what the site is, who the author is, the
+> pillars / categories. ~50-80 words.
+
+## <PILLAR_1_NAME>
+
+- [<Piece title>](<URL>): One-line description.
+- [<Piece title>](<URL>): One-line description.
+
+## <PILLAR_2_NAME>
+
+- [<Piece title>](<URL>): One-line description.
+- [<Piece title>](<URL>): One-line description.
+
+## <PILLAR_3_NAME>
+
+- [<Piece title>](<URL>): One-line description.
+- [<Piece title>](<URL>): One-line description.
+
+## Reference
+
+- [About](<CANONICAL_ORIGIN>/about): The author bio + stance.
+- [Writing index](<CANONICAL_ORIGIN>/writing): All pieces, reverse-chronological.
+- [RSS](<CANONICAL_ORIGIN>/rss.xml)
+- [Sitemap](<CANONICAL_ORIGIN>/sitemap.xml)
+- [Full-text dump for ingestion](<CANONICAL_ORIGIN>/llms-full.txt)

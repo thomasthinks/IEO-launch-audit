@@ -1,0 +1,236 @@
+# launch-readiness-audit -- repo config
+# Copy to <repo>/.launch-readiness.yml and customize.
+#
+# Every key is optional unless explicitly noted. The audit degrades
+# gracefully when a key is unset (the check it powers either skips or
+# falls back to a less-precise mode).
+#
+# Token-bearing keys (PAGESPEED_API_KEY, OPR_API_KEY,
+# CLOUDFLARE_API_TOKEN) are read from env vars first, then from inline
+# yaml values, then from SOPS-encrypted paths. Inline values are
+# convenient for one-off probes but should not be committed; use the
+# `*_secret_path` form with SOPS in a real project.
+
+# -------------------------------------------------------------------
+# Identity + origin
+# -------------------------------------------------------------------
+
+# Apex domain (used by checks 1, 5, 7, 11 for header probing, P856
+# verification, canonical URL audits, and live-apex probing). Pre-flip:
+# set to your intended apex even if it doesn't resolve yet -- the URL-
+# shape checks compare against this string.
+canonical_origin: https://example.com
+
+# Live-probe override -- where the audit actually curls right now.
+# Defaults to canonical_origin. Typical use: pre-flip work where the
+# apex DNS doesn't resolve yet -- point at a local server so live
+# header probes, 404-status checks, Lighthouse runs, and check 11
+# hit something real, while URL-shape checks (sitemap prefix match,
+# P856 reconciliation) keep using canonical_origin.
+# live_probe_origin: http://localhost:5000
+
+# Wikidata Q-ID for the author/Person entity. Used by check 05. If the
+# author has no Wikidata entry, create one at wikidata.org before flip
+# -- the P856 reciprocal claim is the load-bearing edge for Knowledge
+# Panel eligibility.
+wikidata_qid: Q12345678
+
+# Site name (for templated robots.txt / llms.txt fixes; substituted
+# into the <SITE_NAME> placeholder).
+# site_name: Example Site
+
+# -------------------------------------------------------------------
+# Artifact paths
+# -------------------------------------------------------------------
+
+# Override artifact paths if your build emits elsewhere. Defaults work
+# for vercel-style dist/public layouts and most static-site generators.
+artifacts:
+  robots_txt: dist/public/robots.txt
+  sitemap_xml: dist/public/sitemap.xml
+  llms_txt: dist/public/llms.txt
+  llms_full_txt: dist/public/llms-full.txt
+  schema_graph_json: dist/public/schema-graph.json
+
+# Skip specific checks by number. E.g., skip Core Web Vitals if you have
+# no canonical_origin yet AND no Lighthouse CLI installed.
+# skip_checks: [4]
+
+# -------------------------------------------------------------------
+# Check 03 -- AI-bot directives
+# -------------------------------------------------------------------
+
+# Citation-class bot allowlist policy.
+# Options: "all" (allow every documented citation-class bot -- recommended
+#               for editorial sites with no paywall)
+#          ["bot1", "bot2", ...] (allow only these specific bots)
+ai_bots_allow_citation: all
+
+# Training-class bot policy.
+# Options: "all" (allow every documented training-class bot -- recommended
+#                for editorial sites with no paywall; maximizes parametric-
+#                knowledge exposure in future LLM generations)
+#          "deny_all" (block all training-class)
+#          ["bot1", "bot2"] (specific list)
+ai_bots_allow_training: all
+
+# Bytespider posture.
+# Options: "edge_block" (Disallow in robots.txt PLUS edge/WAF rule --
+#                       recommended; Bytespider ignores robots.txt)
+#          "robots_disallow" (robots.txt Disallow only -- Bytespider will
+#                            ignore but signal is documented)
+#          "allow" (Bytespider allowed; not recommended)
+bytespider_policy: edge_block
+
+# Cloudflare WAF API probe (check 3.4, v0.8). When cloudflare_zone_id
+# is set AND a CF API token is reachable (env CLOUDFLARE_API_TOKEN
+# OR SOPS-decrypted cloudflare_secret_path), check 3.4 queries the
+# Cloudflare API for the zone's custom WAF ruleset and verifies an
+# enabled block rule whose expression mentions "bytespider". On verify
+# the Bytespider WARN downgrades to PASS. Required token scope:
+# Zone:Read + Zone WAF:Read.
+#
+# When neither token nor zone is configured, the probe is silently
+# skipped and the WARN remains (prior behaviour preserved).
+#
+# cloudflare_zone_id: 0123456789abcdef0123456789abcdef
+# cloudflare_secret_path: secrets/cf-api.enc.yaml   # SOPS-encrypted with
+#                                                    # CLOUDFLARE_API_TOKEN: <token>
+
+# -------------------------------------------------------------------
+# Check 04 -- Core Web Vitals (PageSpeed Insights, v0.9)
+# -------------------------------------------------------------------
+
+# PageSpeed Insights integration (opt-in). When pagespeed_api_key is
+# reachable (env var PAGESPEED_API_KEY first, then inline value below,
+# then SOPS path), the check calls PSI v5 for home + N sampled piece
+# URLs and parses real Lighthouse scores + CWV. CrUX field-data INP is
+# extracted when available (post-flip sites with real traffic).
+#
+# When unset, check 04 preserves its prior offline + Lighthouse-CLI
+# fallback behaviour.
+#
+# Cost shape: ~25-40s per URL per strategy. Default 3 pieces + home = 4
+# URLs, mobile-only = ~2-3 minutes. "both" strategy doubles that.
+# PSI free quota: 25,000 req/day per key. On 429, audit WARNs and
+# continues (rest of the run is not blocked).
+#
+# pagespeed_api_key: AIzaSy...     # inline; convenient but not recommended
+#                                  # for committed configs
+# pagespeed_secret_path: secrets/pagespeed.enc.yaml  # SOPS-encrypted with
+#                                                     # PAGESPEED_API_KEY: <key>
+# pagespeed_sample_urls: 3         # piece URLs to sample beyond home
+# pagespeed_strategy: mobile       # mobile | desktop | both
+# pagespeed_include_crux: true     # parse CrUX field-data from the same
+#                                  # PSI responses. No extra API cost;
+#                                  # flip false to suppress NOT_APPLICABLE
+#                                  # CrUX findings on pre-traffic sites.
+
+# -------------------------------------------------------------------
+# Check 06 -- IndexNow
+# -------------------------------------------------------------------
+
+# Optional: explicit IndexNow key (UUID-style, 32 hex chars). When set,
+# check 11 phase F additionally probes /<indexnow_key>.txt to confirm
+# the keyfile is reachable at the live apex. When unset, check 06 still
+# autodetects keyfiles in public roots by filename pattern.
+# indexnow_key: 0123456789abcdef0123456789abcdef
+
+# -------------------------------------------------------------------
+# Check 07 -- Sitemap accuracy
+# -------------------------------------------------------------------
+
+# Sitemap lastmod source-of-truth.
+# Options: "file_mtime" (default; v0.4 behavior -- compare against source file
+#                       mtime. Correct when the build pipeline preserves
+#                       authoring mtimes.)
+#          "editorial" (compare against editorial date keys read from
+#                      frontmatter. Use for backdated catalogues where every
+#                      source file shares a build-step mtime but per-piece
+#                      editorial dates are the correct lastmod signal.
+#                      Requires slug_to_frontmatter_map below.)
+sitemap_lastmod_mode: file_mtime
+
+# Only used when sitemap_lastmod_mode: editorial.
+# Maps a sitemap-URL slug (last path segment of <loc>) to a frontmatter
+# source file via glob patterns. `{slug}` is substituted at runtime.
+# Each piece's frontmatter is parsed for the first present date key in
+# date_keys (priority order). If the frontmatter file isn't found or
+# none of the configured date keys are present, the URL counts as
+# "unverifiable" rather than mismatched.
+# slug_to_frontmatter_map:
+#   pattern: "docs/editorial/drafts/*{slug}*.md"
+#   fallback_pattern: "writing-drafts/*{slug}*.md"
+#   date_keys: ["dateModified", "originalPublicationDate", "publishedDate"]
+
+# -------------------------------------------------------------------
+# Check 08 -- Internal-link quality
+# -------------------------------------------------------------------
+
+# Default: 0.10 single-word ratio (warn above 10%, fail above 30%)
+# Default: 2.0 links per 500w density (warn above 2)
+link_quality:
+  single_word_warn_pct: 10
+  single_word_fail_pct: 30
+  density_per_500w_warn: 2.0
+
+# -------------------------------------------------------------------
+# Check 09 -- Content tactics
+# -------------------------------------------------------------------
+
+# Coverage thresholds (% of tactics present per piece).
+# Default: GREEN >=60% / YELLOW 35-60% / RED <35%
+content_tactics:
+  green_threshold_pct: 60
+  yellow_threshold_pct: 35
+
+# -------------------------------------------------------------------
+# Check 02 -- Schema.org graph
+# -------------------------------------------------------------------
+
+# Per-page JSON-LD validation sample size (check 2.8).
+# Each sampled rendered HTML page is read, regex-scanned for the inline
+# <script type="application/ld+json"> block, and JSON-parsed.
+# Options: integer N (first N pages by rglob order)
+#          "all" (every rendered page -- full coverage, slower runtime;
+#                 on a 250-page site expect ~minutes instead of seconds)
+# Default: 10
+jsonld_sample_size: 10
+
+# Web-validator fallback for check 2.10 (v0.6).
+# When true, any @type in schema-graph.json NOT covered by the offline
+# curated rules (references/schema-org-rules.json -- Article, Person,
+# WebSite, CollectionPage, ProfilePage, ImageObject, BreadcrumbList,
+# ItemList, ListItem, DefinedTerm, SpeakableSpecification, Occupation,
+# ScholarlyArticle) is POSTed to validator.schema.org for advisory
+# validation. Useful when the consumer site emits Recipe / Product /
+# VideoObject / Event / FAQPage / HowTo / etc.
+#
+# Caveats:
+#   - validator.schema.org is unofficial (Google-hosted contribution),
+#     rate-limited (~50 req/hr before 429), and has no API contract --
+#     output shape may change without notice.
+#   - Network-bound: adds a 15s/request HTTP round-trip to the audit.
+#   - Degrades to a 2.10.web_validator MANUAL_VERIFY finding on any
+#     failure mode (timeout / non-JSON / unreachable).
+#
+# Default: false (opt-in to avoid network calls + rate-limit risk).
+web_validator_fallback: false
+
+# -------------------------------------------------------------------
+# Curation scaffold (v0.5+)
+# -------------------------------------------------------------------
+
+# Inline-link curation is LLM-curated, not mechanically derived. The
+# driver script chunks the corpus into batches; a subagent reads each
+# batch and produces typed citation suggestions. This skill ships only
+# the scaffold (no LLM-API call inside the audit).
+#
+# curation:
+#   corpus_tsx_dir: client/src/content/writing  # default
+#   batch_size: 25                              # default
+#   output_dir: .curation                       # default
+#   body_excerpt_words: 0                       # 0 = full body
+#   canonical_origin: https://example.com       # for link-table URLs;
+#                                                # defaults to top-level
+#                                                # canonical_origin
