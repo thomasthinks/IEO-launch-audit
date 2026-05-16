@@ -275,6 +275,241 @@ def run(args) -> CheckResult:
                 title="Common static pages present in sitemap",
             ))
 
+    # 7.4 — Per-engine freshness band coverage (v1.3).
+    #
+    # Each AI engine has a different freshness preference, per Phase 2
+    # verification (ConvertMate 2026, Profound, Ahrefs Feb 2026):
+    #   Perplexity ~30d  → 76-82% of cited content under 30 days
+    #   ChatGPT   ~90d  → 70%+ under 12 months but cliff at 3 months
+    #   AI Overviews ~180d → 50% under 13 weeks (smoothed from Amsive)
+    #   Claude     unknown → not enough independent measurement to score
+    #
+    # The check reports DISTRIBUTION as INFO across the consumer's
+    # target_engines list. Operator decides whether to backfill freshness
+    # for an under-represented engine.
+    target_engines = config.get("target_engines") or ["chatgpt", "perplexity", "aio"]
+    if isinstance(target_engines, str):
+        target_engines = [target_engines]
+    PER_ENGINE_BANDS = {
+        "perplexity": 30,
+        "chatgpt": 90,
+        "aio": 180,
+        "ai_overviews": 180,
+        "google_ai_mode": 180,
+        # Claude omitted: insufficient independent measurement as of 2026-05.
+    }
+    now = datetime.now(timezone.utc)
+    ages_days: list[int] = []
+    for u in urls:
+        if not u.get("lastmod"):
+            continue
+        dt = parse_iso_date(u["lastmod"])
+        if dt is None:
+            continue
+        ages_days.append((now - dt).days)
+    if ages_days:
+        n = len(ages_days)
+        ages_sorted = sorted(ages_days)
+        median_age = ages_sorted[n // 2]
+        bands_present: list[tuple[str, int, int, int, float]] = []
+        # (engine, threshold_days, under_band, total, pct)
+        for eng in target_engines:
+            key = eng.lower().strip()
+            threshold = PER_ENGINE_BANDS.get(key)
+            if threshold is None:
+                continue
+            under = sum(1 for a in ages_days if a <= threshold)
+            pct = under * 100 / n
+            bands_present.append((eng, threshold, under, n, pct))
+        if bands_present:
+            result.findings.append(Finding(
+                id="7.4.engine_freshness", severity="INFO",
+                title=(
+                    f"Per-engine freshness distribution (median age {median_age}d) "
+                    "across " + ", ".join(e for e, _t, _u, _n, _p in bands_present)
+                ),
+                current={
+                    "median_age_days": median_age,
+                    "lastmod_count": n,
+                    "bands": [
+                        {
+                            "engine": e,
+                            "threshold_days": t,
+                            "under_band": u,
+                            "total": tot,
+                            "pct_under_band": round(p, 1),
+                        }
+                        for (e, t, u, tot, p) in bands_present
+                    ],
+                },
+                notes=(
+                    "Per-engine bands: Perplexity ~30d (Profound May 2025), "
+                    "ChatGPT ~90d (Profound Jan-Mar 2026), AIO ~180d "
+                    "(ConvertMate 2026; Amsive 13-week smoothed). Claude "
+                    "omitted — insufficient independent measurement 2026-05. "
+                    "Configure via `target_engines:` list."
+                ),
+            ))
+
+    # 7.5 — Substantive-delta detection (v1.3, opt-in).
+    #
+    # December 2025 core update: cosmetic dateModified flips no longer
+    # trigger freshness boost (Mueller on record + Sterling Sky case
+    # studies). The audit can verify substantive delta via Wayback CDX
+    # API content-digest comparison — identical digests = bit-identical =
+    # cosmetic (or no change). When digests differ, fetch the prior
+    # snapshot + current HTML and compute a difflib ratio: <10% delta =
+    # cosmetic-only.
+    #
+    # Opt-in via `freshness_delta_check: true` — adds 10s-2min to audit
+    # budget. Sample size defaults to 5 URLs (random; deterministic via
+    # random.seed(42)). Stdlib-only.
+    if config.get("freshness_delta_check") is True:
+        import random
+        import urllib.error
+        import urllib.parse
+        import urllib.request
+        from difflib import SequenceMatcher
+
+        sample_n = int(config.get("freshness_delta_sample_size", 5))
+        urls_with_lastmod = [u for u in urls if u.get("loc") and u.get("lastmod")]
+        if not urls_with_lastmod:
+            result.findings.append(Finding(
+                id="7.5.delta_skip", severity="INFO",
+                title="Substantive-delta check skipped: no sitemap URLs carry lastmod",
+            ))
+        else:
+            random.seed(42)
+            sample_urls = (
+                random.sample(urls_with_lastmod, sample_n)
+                if len(urls_with_lastmod) > sample_n
+                else urls_with_lastmod
+            )
+            cosmetic_only: list[tuple[str, float]] = []
+            substantive: list[tuple[str, float]] = []
+            delta_unverifiable: list[str] = []  # local to 7.5; do not shadow the 7.2 counter
+            for u in sample_urls:
+                loc = u["loc"]
+                # Query Wayback CDX for the most recent snapshot's content
+                # digest. Stdlib-only.
+                cdx_url = (
+                    "https://web.archive.org/cdx/search/cdx?"
+                    + urllib.parse.urlencode({
+                        "url": loc,
+                        "output": "json",
+                        "limit": "-1",
+                        "fl": "timestamp,digest",
+                    })
+                )
+                try:
+                    req = urllib.request.Request(
+                        cdx_url,
+                        headers={"User-Agent": "IEO-launch-audit/1.3"},
+                    )
+                    with urllib.request.urlopen(req, timeout=15) as r:
+                        rows = json.loads(r.read().decode("utf-8"))
+                except (urllib.error.URLError, urllib.error.HTTPError,
+                        json.JSONDecodeError, TimeoutError, OSError):
+                    delta_unverifiable.append(loc)
+                    continue
+                if not isinstance(rows, list) or len(rows) < 2:
+                    delta_unverifiable.append(loc)
+                    continue
+                # rows[0] is header, rows[-1] is most recent snapshot.
+                prior_ts, prior_digest = rows[-1][0], rows[-1][1]
+                # Fetch current HTML (visible-text only)
+                try:
+                    req = urllib.request.Request(
+                        loc,
+                        headers={"User-Agent": "IEO-launch-audit/1.3"},
+                    )
+                    with urllib.request.urlopen(req, timeout=15) as r:
+                        current_html = r.read().decode("utf-8", errors="replace")
+                except (urllib.error.URLError, urllib.error.HTTPError,
+                        TimeoutError, OSError):
+                    delta_unverifiable.append(loc)
+                    continue
+                # Fetch prior snapshot
+                wayback_url = f"https://web.archive.org/web/{prior_ts}id_/{loc}"
+                try:
+                    req = urllib.request.Request(
+                        wayback_url,
+                        headers={"User-Agent": "IEO-launch-audit/1.3"},
+                    )
+                    with urllib.request.urlopen(req, timeout=20) as r:
+                        prior_html = r.read().decode("utf-8", errors="replace")
+                except (urllib.error.URLError, urllib.error.HTTPError,
+                        TimeoutError, OSError):
+                    delta_unverifiable.append(loc)
+                    continue
+                # Visible-text diff using SequenceMatcher.
+                def strip(s):
+                    s = re.sub(r"<script\b.*?</script>", " ", s, flags=re.DOTALL | re.IGNORECASE)
+                    s = re.sub(r"<style\b.*?</style>", " ", s, flags=re.DOTALL | re.IGNORECASE)
+                    s = re.sub(r"<[^>]+>", " ", s)
+                    return re.sub(r"\s+", " ", s).strip()
+                cur_text = strip(current_html)
+                prior_text = strip(prior_html)
+                if not cur_text or not prior_text:
+                    delta_unverifiable.append(loc)
+                    continue
+                ratio = SequenceMatcher(None, prior_text, cur_text).ratio()
+                # ratio close to 1.0 → near-identical; <10% delta = cosmetic.
+                delta = 1 - ratio
+                if delta < 0.10:
+                    cosmetic_only.append((loc, ratio))
+                else:
+                    substantive.append((loc, ratio))
+            scored = len(cosmetic_only) + len(substantive)
+            if scored == 0:
+                result.findings.append(Finding(
+                    id="7.5.substantive_delta", severity="MANUAL_VERIFY",
+                    title=(
+                        f"Substantive-delta check unverifiable on all {len(sample_urls)} "
+                        "sampled URLs (no Wayback snapshots or fetch failures)"
+                    ),
+                    notes=(
+                        "Wayback CDX returned no prior snapshot OR current/prior "
+                        "fetch failed. Re-run after the site has a Wayback history. "
+                        f"{len(delta_unverifiable)} URL(s) unverifiable."
+                    ),
+                ))
+            elif cosmetic_only:
+                samples = [f"{loc} (ratio {r:.2f})" for loc, r in cosmetic_only[:5]]
+                result.findings.append(Finding(
+                    id="7.5.substantive_delta", severity="WARN",
+                    title=(
+                        f"{len(cosmetic_only)}/{scored} sampled URLs show "
+                        "<10% text delta vs prior Wayback snapshot — possible "
+                        "cosmetic dateModified flips"
+                    ),
+                    current=samples,
+                    fix_safety="manual",
+                    fix_action=(
+                        "Review the flagged URLs. If dateModified bumped without "
+                        "substantive content change, Google's December 2025 core "
+                        "update treats this as low-trust signal noise (Mueller on "
+                        "record). Either revert the date or add substantive content."
+                    ),
+                    notes=(
+                        f"Sample: {scored} scored, {len(delta_unverifiable)} unverifiable. "
+                        "Threshold: <10% delta = cosmetic. Method: Wayback CDX "
+                        "content-digest API + difflib.SequenceMatcher on visible-text diff."
+                    ),
+                ))
+            else:
+                result.findings.append(Finding(
+                    id="7.5.substantive_delta", severity="PASS",
+                    title=(
+                        f"All {scored} sampled URLs have substantive content delta "
+                        "(>10%) vs prior Wayback snapshot"
+                    ),
+                    notes=(
+                        f"{len(delta_unverifiable)} unverifiable. Cosmetic-flip-class "
+                        "concerns: not detected at this sample size."
+                    ),
+                ))
+
     result.summary = (
         f"Sitemap: {len(urls)} URLs, lastmod-accuracy (mode={lastmod_mode}) sample "
         f"{matched}/{matched + mtime_mismatches} OK, {unverifiable} unverifiable."
@@ -283,6 +518,8 @@ def run(args) -> CheckResult:
         "sitemap_lastmod_mode": lastmod_mode,
         "editorial_patterns": patterns if lastmod_mode == "editorial" else None,
         "editorial_date_keys": date_keys if lastmod_mode == "editorial" else None,
+        "target_engines": target_engines,
+        "freshness_delta_check": config.get("freshness_delta_check") is True,
     }
     return result
 

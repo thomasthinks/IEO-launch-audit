@@ -229,6 +229,77 @@ jsonld_sample_size: 10
 web_validator_fallback: false
 
 # -------------------------------------------------------------------
+# Check 13 -- Imagery provenance (C2PA / IPTC digitalSourceType) (v1.3, opt-in)
+# -------------------------------------------------------------------
+
+# Gate: site uses generative AI for hero / inline images.
+# When true, the check walks sampled rendered HTML pages, extracts
+# og:image / twitter:image targets, and scans XMP for IPTC
+# digitalSourceType + C2PA manifest markers. When false / unset, the
+# check emits one INFO and skips silently (no false alarms on sites
+# without AI imagery).
+# ai_generated_imagery: false
+
+# Gate: site syndicates to Google Merchant Center. Raises severity of
+# missing-provenance findings from WARN to FAIL — Google Merchant
+# Center demotes / removes AI product images lacking IPTC
+# digitalSourceType (Feb 2024+ policy).
+# merchant_feed: false
+
+# -------------------------------------------------------------------
+# Check 7 -- Sitemap accuracy (v1.3 additions)
+# -------------------------------------------------------------------
+
+# Per-engine freshness bands. The audit reports the % of sitemap URLs
+# under each engine's freshness band as INFO. Default: chatgpt + perplexity
+# + aio. Claude omitted by default — insufficient independent measurement
+# of Claude's freshness preference as of 2026-05. Add via config when
+# new measurement lands.
+# target_engines: [chatgpt, perplexity, aio]
+
+# Substantive-delta detection (Wayback CDX content-digest + difflib
+# text-diff on mismatch). Catches cosmetic dateModified flips that
+# December 2025 Google core update no longer rewards. Adds ~10s-2min
+# to audit budget. Default off.
+# freshness_delta_check: false
+
+# Sample size for the substantive-delta check.
+# freshness_delta_sample_size: 5
+
+# -------------------------------------------------------------------
+# Check 5 -- Entity-hub coverage (v1.3 addition)
+# -------------------------------------------------------------------
+
+# Override the default top-tier entity-hub list. The check extends
+# Person.sameAs coverage beyond Wikidata to the 13 hubs that
+# disproportionately drive AI-engine citation (5W "AI Platform
+# Citation Source Index 2026"). Default list: Wikipedia, Wikidata,
+# LinkedIn, YouTube channel, GitHub, Crunchbase, ORCID, Reddit, GBP,
+# Mastodon, Bluesky, X/Twitter, LinkedIn (company). Customize for
+# specific industries (e.g., academic + ResearchGate, dev-tool + npm).
+# Each entry must have {name, match}; `match` is a substring tested
+# against the lowercased sameAs URL.
+# entity_hubs:
+#   - { name: "Wikipedia",       match: "wikipedia.org/wiki/" }
+#   - { name: "Wikidata",        match: "wikidata.org/wiki/" }
+#   - { name: "LinkedIn",        match: "linkedin.com/in/" }
+#   - { name: "YouTube channel", match: "youtube.com/@" }
+#   - { name: "GitHub",          match: "github.com/" }
+#   # ... etc.
+
+# -------------------------------------------------------------------
+# Check 2 -- Schema.org graph (v1.3 additions)
+# -------------------------------------------------------------------
+
+# News-publisher US English context. When true, the 2.4.speakable
+# severity remains WARN (Speakable matters for Google Assistant news
+# extraction). When false / unset (default), severity is INFO —
+# Speakable is officially beta + Google-Assistant-only + NOT used by
+# AI Overviews / AI Mode for summarization. The check still emits
+# severity, just at INFO tier for non-news consumers.
+# news_publisher_us_english: false
+
+# -------------------------------------------------------------------
 # Check 12 -- Search Console cross-verification (v1.2, opt-in)
 # -------------------------------------------------------------------
 

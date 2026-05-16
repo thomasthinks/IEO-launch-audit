@@ -375,6 +375,74 @@ def _walk_speakable_nodes(parsed_jsonld) -> list:
     return out
 
 
+# v1.3 helpers — used by check 2.4.graph_consolidation + 2.4.schema_text_parity.
+
+# Fields the schema↔text parity check walks. Strings with <3 words are
+# skipped (not enough signal); longer fields are checked first-5-words
+# against the rendered DOM.
+_PARITY_STRING_FIELDS = {
+    "name", "headline", "description", "alternativeHeadline",
+    "abstract", "articleBody", "creditText", "caption",
+}
+
+
+def _count_cross_id_refs(parsed_blocks: list, page_ids: set) -> int:
+    """Count {@id: <some_id>} reference patterns where the id is in
+    page_ids. The argument is a list of parsed JSON-LD blocks (each a
+    dict or list). Used by check 2.4.graph_consolidation."""
+    def walk(obj) -> int:
+        if isinstance(obj, dict):
+            if len(obj) == 1 and "@id" in obj and obj["@id"] in page_ids:
+                return 1
+            return sum(walk(v) for v in obj.values())
+        if isinstance(obj, list):
+            return sum(walk(item) for item in obj)
+        return 0
+    return sum(walk(b) for b in parsed_blocks)
+
+
+def _strip_html_to_text(html: str) -> str:
+    """Strip <script>, <style>, then all tags. Lowercase + collapse
+    whitespace. Used as the parity-check DOM-side reference text."""
+    s = re.sub(r"<script\b.*?</script>", " ", html, flags=re.DOTALL | re.IGNORECASE)
+    s = re.sub(r"<style\b.*?</style>", " ", s, flags=re.DOTALL | re.IGNORECASE)
+    s = re.sub(r"<[^>]+>", " ", s)
+    s = re.sub(r"\s+", " ", s)
+    return s.lower()
+
+
+def _walk_string_fields_for_parity(parsed_blocks: list):
+    """Yield (path, value) for every JSON-LD string field worth parity-
+    checking against the rendered DOM. Skips strings with <3 words
+    (not enough signal). Used by check 2.4.schema_text_parity.
+
+    Important: must enter `@graph` and similar JSON-LD container keys to
+    reach the actual nodes. Filter is on the LEAF key name (must be in
+    _PARITY_STRING_FIELDS), not on whether the path passes through `@`-
+    prefixed containers."""
+    def walk(obj, path=""):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                # Don't yield from @-prefixed keys (they're JSON-LD
+                # control metadata: @id, @type, @context). But DO recurse
+                # into containers like @graph that hold nodes.
+                new_path = f"{path}.{k}" if path else k
+                if (
+                    not k.startswith("@")
+                    and k in _PARITY_STRING_FIELDS
+                    and isinstance(v, str)
+                    and len(v.split()) >= 3
+                ):
+                    yield (new_path, v)
+                if isinstance(v, (dict, list)):
+                    yield from walk(v, new_path)
+        elif isinstance(obj, list):
+            for i, item in enumerate(obj):
+                yield from walk(item, f"{path}[{i}]")
+    for i, b in enumerate(parsed_blocks):
+        yield from walk(b, f"block[{i}]")
+
+
 def _value_matches_type(value, expected_type: str) -> bool:
     """Check a JSON-LD property value against a curated type spec.
     Lenient: an object containing only {@id: URL} satisfies any URL-typed slot."""
@@ -751,6 +819,87 @@ def run(args) -> CheckResult:
                         ),
                     ))
 
+        # 2.4.about_mentions_usage — `about` vs `mentions` usage (v1.3).
+        # Schema.org defines `about` = 1-3 primary entities the page IS
+        # about; `mentions` = secondary references. NO Google primary doc
+        # differentiates ranking weight (Mueller on record: Google
+        # "rarely learns anything unique from structured data"). Advisory
+        # only; INFO-tier. Surfaces three signals:
+        #   - articles with `mentions` but no `about` (likely-misused);
+        #   - articles with `about` array length > 3 (over-broad);
+        #   - articles with no `about` at all (typical for thin-emitter
+        #     consumers; expected on most sites that haven't adopted the
+        #     entity-linking pattern).
+        sample_n = len(sample)
+        with_about = [a for a in sample if a.get("about")]
+        with_mentions_only = [
+            a for a in sample
+            if a.get("mentions") and not a.get("about")
+        ]
+        about_over_broad = [
+            a for a in sample
+            if isinstance(a.get("about"), list) and len(a["about"]) > 3
+        ]
+        if not with_about and sample_n > 0:
+            result.findings.append(Finding(
+                id="2.4.about_mentions_usage", severity="INFO",
+                title=(
+                    f"0/{sample_n} sampled articles emit `about` "
+                    "(entity-linking signal missing)"
+                ),
+                fix_safety="manual",
+                fix_action=(
+                    "Add `about` to Article schema referencing the 1-3 "
+                    "primary DefinedTerm / Person / Place / Organization "
+                    "entities the piece IS about. Distinct from `mentions` "
+                    "(secondary references). Advisory: no Google primary "
+                    "doc confirms `about` ranking weight, but the semantic "
+                    "distinction is the entity-linking best practice."
+                ),
+                notes="Practitioner consensus + schema.org definition; not Google-confirmed weighting.",
+            ))
+        elif with_mentions_only:
+            result.findings.append(Finding(
+                id="2.4.about_mentions_usage", severity="INFO",
+                title=(
+                    f"{len(with_mentions_only)}/{sample_n} sampled articles use "
+                    "`mentions` but no `about` (entity-linking inverted)"
+                ),
+                current=[a.get("@id", "?") for a in with_mentions_only[:5]],
+                fix_safety="manual",
+                fix_action=(
+                    "Consider lifting 1-3 primary entities from mentions[] "
+                    "into about[]. about = what the piece IS about; "
+                    "mentions = secondary references."
+                ),
+            ))
+        elif about_over_broad:
+            result.findings.append(Finding(
+                id="2.4.about_mentions_usage", severity="INFO",
+                title=(
+                    f"{len(about_over_broad)}/{sample_n} sampled articles have "
+                    "`about` array > 3 entries (over-broad)"
+                ),
+                current=[
+                    f"{a.get('@id', '?')} (about×{len(a['about'])})"
+                    for a in about_over_broad[:5]
+                ],
+                fix_safety="manual",
+                fix_action=(
+                    "Narrow `about` to 1-3 primary entities. Move secondary "
+                    "entities to `mentions`. The about/mentions split is the "
+                    "entity-linking discipline."
+                ),
+            ))
+        elif with_about:
+            result.findings.append(Finding(
+                id="2.4.about_mentions_usage", severity="PASS",
+                title=(
+                    f"{len(with_about)}/{sample_n} sampled articles emit `about` "
+                    "with disciplined entity counts (1-3 primary entities)"
+                ),
+            ))
+
     # 2.5 — CollectionPage → ItemList
     collections = get_nodes_by_type(graph, "CollectionPage")
     if collections:
@@ -1054,53 +1203,102 @@ def run(args) -> CheckResult:
         # wordCount comparison. Each entry is (page_path, declared, actual).
         word_count_drift: list[tuple[str, int, int]] = []
         word_count_ok: int = 0
+        # 2.4.graph_consolidation tracking (v1.3) — NLWeb readiness signal.
+        # Per-page: total inline JSON-LD blocks; presence of @graph wrapper;
+        # cross-@id reference count. Fragmented = >1 block or no @graph wrapper.
+        graph_block_counts: list[int] = []     # one entry per parsed page
+        graph_uses_at_graph: list[bool] = []   # whether the page's blocks
+                                               #   include an @graph wrapper
+        graph_cross_refs_total: int = 0
+        # 2.4.schema_text_parity tracking (v1.3) — JSON-LD string fields not
+        # present in the rendered DOM. LLM fetchers tokenize JSON-LD as raw
+        # text, but Google policy + SearchVIU/DuckTest evidence converge on
+        # "schema not mirrored in visible HTML is functionally invisible."
+        parity_checked: int = 0
+        parity_missing: list[tuple[str, str, str]] = []   # (page, path, value)
         for h in sample_html:
             html_text = h.read_text(encoding="utf-8")
-            m = re.search(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', html_text, re.DOTALL)
-            if not m:
+            # Find ALL JSON-LD blocks on the page (was: first only). Per-page
+            # missing/malformed counts now respect any-block-malformed semantics.
+            blocks = re.findall(
+                r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
+                html_text, re.DOTALL,
+            )
+            if not blocks:
                 missing_jsonld += 1
                 continue
-            try:
-                parsed = json.loads(m.group(1))
-                valid_jsonld += 1
-            except json.JSONDecodeError:
+            parsed_blocks: list = []
+            any_malformed = False
+            for b in blocks:
+                try:
+                    parsed_blocks.append(json.loads(b))
+                except json.JSONDecodeError:
+                    any_malformed = True
+            if any_malformed:
                 malformed_jsonld += 1
                 continue
-            # 2.4.word_count_drift — declared wordCount vs rendered body.
-            # Skip pages with very short rendered bodies (noise floor) and
-            # pages whose Article emitter doesn't declare wordCount.
-            wc_node = _find_article_with_wordcount(parsed)
-            if wc_node is not None:
-                declared_wc = wc_node.get("wordCount")
-                actual_wc = _extract_body_words(html_text)
-                if (
-                    isinstance(declared_wc, int)
-                    and actual_wc is not None
-                    and actual_wc >= WORD_COUNT_MIN_BODY
-                ):
-                    drift = abs(declared_wc - actual_wc) / actual_wc
-                    if drift > WORD_COUNT_DRIFT_TOLERANCE:
-                        word_count_drift.append((str(h), declared_wc, actual_wc))
+            valid_jsonld += 1
+            graph_block_counts.append(len(blocks))
+            # 2.4.graph_consolidation — does ANY of this page's blocks carry
+            # an @graph wrapper? And how many cross-@id refs are visible
+            # within the parsed graph?
+            has_graph_wrapper = False
+            page_ids: set = set()
+            for pb in parsed_blocks:
+                if isinstance(pb, dict) and isinstance(pb.get("@graph"), list):
+                    has_graph_wrapper = True
+                    for node in pb["@graph"]:
+                        if isinstance(node, dict) and node.get("@id"):
+                            page_ids.add(node["@id"])
+            graph_uses_at_graph.append(has_graph_wrapper)
+            # Count cross-@id refs ({@id: ...} that points at a page-local @id).
+            graph_cross_refs_total += _count_cross_id_refs(parsed_blocks, page_ids)
+            # For wordCount + Speakable + parity, treat the union of all
+            # parsed blocks as the page's effective JSON-LD payload.
+            for parsed in parsed_blocks:
+                # 2.4.word_count_drift — declared wordCount vs rendered body.
+                # Skip pages with very short rendered bodies (noise floor) and
+                # pages whose Article emitter doesn't declare wordCount.
+                wc_node = _find_article_with_wordcount(parsed)
+                if wc_node is not None:
+                    declared_wc = wc_node.get("wordCount")
+                    actual_wc = _extract_body_words(html_text)
+                    if (
+                        isinstance(declared_wc, int)
+                        and actual_wc is not None
+                        and actual_wc >= WORD_COUNT_MIN_BODY
+                    ):
+                        drift = abs(declared_wc - actual_wc) / actual_wc
+                        if drift > WORD_COUNT_DRIFT_TOLERANCE:
+                            word_count_drift.append((str(h), declared_wc, actual_wc))
+                        else:
+                            word_count_ok += 1
+                # Walk Speakable nodes and resolve their cssSelectors against
+                # this page's HTML.
+                for sp_node in _walk_speakable_nodes(parsed):
+                    sel = sp_node.get("cssSelector")
+                    if isinstance(sel, str):
+                        selectors = [sel]
+                    elif isinstance(sel, list):
+                        selectors = [s for s in sel if isinstance(s, str)]
                     else:
-                        word_count_ok += 1
-            # Walk Speakable nodes and resolve their cssSelectors against
-            # this page's HTML.
-            for sp_node in _walk_speakable_nodes(parsed):
-                sel = sp_node.get("cssSelector")
-                if isinstance(sel, str):
-                    selectors = [sel]
-                elif isinstance(sel, list):
-                    selectors = [s for s in sel if isinstance(s, str)]
-                else:
-                    selectors = []
-                for s in selectors:
-                    text = _resolve_simple_selector_text(html_text, s)
-                    if text is None:
-                        speakable_unresolved.append((str(h), s))
-                        continue
-                    words = _count_words(text)
-                    if words > 0:
-                        speakable_word_counts.append((str(h), words))
+                        selectors = []
+                    for s in selectors:
+                        text = _resolve_simple_selector_text(html_text, s)
+                        if text is None:
+                            speakable_unresolved.append((str(h), s))
+                            continue
+                        words = _count_words(text)
+                        if words > 0:
+                            speakable_word_counts.append((str(h), words))
+            # 2.4.schema_text_parity — strip rendered HTML, walk JSON-LD
+            # string fields, check first-5-words signal is present in DOM.
+            stripped = _strip_html_to_text(html_text)
+            for spath, sval in _walk_string_fields_for_parity(parsed_blocks):
+                parity_checked += 1
+                sig = " ".join(sval.split()[:5]).lower()
+                if sig and sig not in stripped:
+                    parity_missing.append((str(h), spath, sval[:80]))
         if sample_html:
             sample_n = len(sample_html)
             if missing_jsonld > 0:
@@ -1234,6 +1432,119 @@ def run(args) -> CheckResult:
                         f"wordCount within ±{int(WORD_COUNT_DRIFT_TOLERANCE * 100)}% of rendered body"
                     ),
                 ))
+
+            # 2.4.graph_consolidation — NLWeb readiness (v1.3).
+            # Pages with >1 inline JSON-LD block are fragmented; pages
+            # without @graph wrappers don't expose entity relationships
+            # cleanly. Both reduce agentic-web/NLWeb readiness. INFO-tier:
+            # advisory, not measured-penalty (no controlled-test comparing
+            # fragmented vs consolidated citation rates as of 2026-05).
+            if graph_block_counts:
+                pages_n = len(graph_block_counts)
+                fragmented = sum(1 for n in graph_block_counts if n > 1)
+                no_wrapper = sum(1 for w in graph_uses_at_graph if not w)
+                avg_blocks = sum(graph_block_counts) / pages_n
+                avg_refs = graph_cross_refs_total / pages_n
+                if fragmented == 0 and no_wrapper == 0 and avg_refs >= 1:
+                    result.findings.append(Finding(
+                        id="2.4.graph_consolidation", severity="PASS",
+                        title=(
+                            f"Schema graph consolidated across {pages_n} sampled pages "
+                            f"(1 block / @graph wrapper / avg {avg_refs:.1f} cross-@id refs)"
+                        ),
+                    ))
+                else:
+                    parts = []
+                    if fragmented > 0:
+                        parts.append(f"{fragmented}/{pages_n} pages have >1 inline JSON-LD block")
+                    if no_wrapper > 0:
+                        parts.append(f"{no_wrapper}/{pages_n} pages lack @graph wrapper")
+                    if avg_refs < 1:
+                        parts.append(f"avg {avg_refs:.1f} cross-@id refs/page (entities not connected)")
+                    result.findings.append(Finding(
+                        id="2.4.graph_consolidation", severity="INFO",
+                        title="Schema graph fragmented: " + "; ".join(parts),
+                        current={
+                            "avg_blocks_per_page": round(avg_blocks, 2),
+                            "avg_cross_refs_per_page": round(avg_refs, 2),
+                            "fragmented_pages": fragmented,
+                            "pages_missing_graph_wrapper": no_wrapper,
+                        },
+                        fix_safety="manual",
+                        fix_action=(
+                            "Consolidate per-page emitter to one @graph block "
+                            "with @id cross-references between entities. The "
+                            "Yoast 27.1 Schema Aggregator (Mar 2026) + Microsoft "
+                            "NLWeb (MS Build 2025) pattern queries one consolidated "
+                            "endpoint per site; fragmented per-page JSON-LD is "
+                            "harder for agentic-web tooling to consume. "
+                            "Advisory only — no measured citation penalty as of 2026-05."
+                        ),
+                        notes=(
+                            "INFO-tier: NLWeb adoption is early (Yoast 27.1 + "
+                            "Cloudflare AI Search integrations exist; no controlled "
+                            "fragmented-vs-consolidated citation-rate study yet). "
+                            "Surface so consumers prep for the agentic-web pattern."
+                        ),
+                    ))
+
+            # 2.4.schema_text_parity — JSON-LD strings not mirrored in
+            # the rendered DOM (v1.3). LLM fetchers tokenize JSON-LD as
+            # raw text per SearchVIU 2025 + Williams-Cook "Duck Test"
+            # early 2026. Google's General Structured Data Guidelines
+            # state: "Don't mark up content that is not visible to readers
+            # of the page." Schema-only strings are functionally invisible
+            # to AI engines AND a policy violation per Google.
+            if parity_checked > 0:
+                missing_n = len(parity_missing)
+                if missing_n == 0:
+                    result.findings.append(Finding(
+                        id="2.4.schema_text_parity", severity="PASS",
+                        title=(
+                            f"All {parity_checked} JSON-LD string fields mirrored "
+                            "in rendered DOM"
+                        ),
+                    ))
+                else:
+                    # Dedupe by (path, value) so the same Person.description
+                    # appearing on N pages collapses to one entry in the
+                    # sample.
+                    unique = []
+                    seen: set = set()
+                    for p, path, val in parity_missing:
+                        key = (path, val)
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        unique.append((p, path, val))
+                    sample_missing = [
+                        f"[{path}] '{val}'  (in {Path(p).parent.name}/{Path(p).name})"
+                        for p, path, val in unique[:5]
+                    ]
+                    pct = missing_n * 100 / parity_checked
+                    severity = "WARN" if pct >= 50 else "INFO"
+                    result.findings.append(Finding(
+                        id="2.4.schema_text_parity", severity=severity,
+                        title=(
+                            f"{missing_n}/{parity_checked} ({pct:.0f}%) JSON-LD "
+                            "string fields not found in rendered DOM "
+                            f"({len(unique)} unique)"
+                        ),
+                        current=sample_missing,
+                        expected="JSON-LD string fields should mirror visible HTML content",
+                        fix_safety="manual",
+                        fix_action=(
+                            "Ensure each JSON-LD string field (name, headline, "
+                            "description, articleBody, about.name) is also present "
+                            "in the rendered HTML body. LLM fetchers tokenize "
+                            "JSON-LD as raw text — schema-only content is "
+                            "functionally invisible to ChatGPT / Claude / Perplexity / "
+                            "Gemini per controlled tests (SearchVIU 2025, "
+                            "Williams-Cook Duck Test 2026). Also a Google policy "
+                            "violation: 'Don't mark up content that is not visible "
+                            "to readers of the page.'"
+                        ),
+                    ))
 
     result.summary = (
         f"{sum(1 for f in result.findings if f.severity == 'PASS')} PASS, "

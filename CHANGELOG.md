@@ -3,6 +3,95 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.3.0] — 2026-05-15
+
+The Phase-2-verified candidate slate ships. Seven new findings across six existing checks + one new check (check 13). Driven by the recursive-research arc that ran across v1.2.1: five discovery + six verification subagents validated each candidate against primary sources before promotion. Local-validated against `thomasjankowski-site`; the schema-parity finding surfaces a real WARN (71% of JSON-LD string fields not in DOM, 22 unique missing strings).
+
+### Added
+
+- **Check 13 — Imagery provenance (C2PA / IPTC `digitalSourceType`).** New opt-in check. Walks sampled rendered HTML pages, extracts `og:image` / `twitter:image` targets, resolves to local filesystem path (falls back to remote Range-fetch), scans XMP for IPTC `digitalSourceType` (`trainedAlgorithmicMedia` / `compositeSynthetic`) + C2PA manifest markers. Gated on `ai_generated_imagery: true` — skips silently when unset. WARN when AI imagery declared but provenance absent; escalates to FAIL when `merchant_feed: true` (Google Merchant Center demotes non-compliant AI product images). **Scope distinction from declined EU AI Act scope:** this is indexing-side enforcement (Google Merchant Center), not regulatory compliance. Stdlib-only XMP parsing; no PIL / ExifRead. ~250 lines.
+
+- **Check 2.4.about_mentions_usage** (advisory). Counts `about` and `mentions` arrays on sampled articles. Flags pages with `mentions` but no `about` (entity-linking inverted); flags `about` array > 3 entries (over-broad); flags zero `about` site-wide (entity-linking signal missing). INFO-tier — no Google primary confirms ranking weight; schema.org definition + practitioner consensus only. ~70 lines.
+
+- **Check 2.4.graph_consolidation** (advisory). Counts inline JSON-LD blocks per rendered page. Flags fragmented sites (>1 block per page) or sites without `@graph` wrappers as INFO. NLWeb-readiness signal (Microsoft NLWeb + Yoast 27.1 March 2026 aggregator); not yet a measured citation penalty. ~50 lines.
+
+- **Check 2.4.schema_text_parity.** Walks JSON-LD string fields (`name`, `headline`, `description`, `alternativeHeadline`, `abstract`, `articleBody`, `creditText`, `caption`) and verifies the first 5 words appear in the rendered DOM. Backstopped by Google's [General Structured Data Guidelines](https://developers.google.com/search/docs/appearance/structured-data/sd-policies): *"Don't mark up content that is not visible to readers of the page."* Verified empirically by SearchVIU 2025 + Williams-Cook "Duck Test" early 2026 — LLM fetchers tokenize JSON-LD as raw text; schema-only content is functionally invisible. Severity scales WARN/INFO with miss percentage. Caught a real WARN on the canonical consumer (71% miss rate).
+
+- **Check 5.5.entity_hub_coverage.** Extends check 5 (Wikidata) — enumerates Person.sameAs coverage against a 13-hub top-tier list (Wikipedia, Wikidata, LinkedIn, YouTube channel, GitHub, Crunchbase, ORCID, Reddit, Google Business Profile, Mastodon, Bluesky, X/Twitter, LinkedIn company). Default list anchored on 5W "AI Platform Citation Source Index 2026" + SE Ranking 1.3M-citation study showing Google AI-Mode self-cites google.com properties (GBP/YouTube) 17.42%. INFO-tier; configurable via `entity_hubs:` list override.
+
+- **Check 7.4.engine_freshness** + **7.5.substantive_delta.** Per-engine freshness bands (Perplexity 30d, ChatGPT 90d, AIO 180d; Claude omitted — insufficient independent measurement) keyed on `target_engines:` config. Reports % of sitemap URLs under each engine's band as INFO. The 13-week global cliff candidate (Amsive folklore) is replaced by per-engine bands. Substantive-delta detection (opt-in via `freshness_delta_check: true`) uses Wayback CDX content-digest API + `difflib.SequenceMatcher` text-diff on mismatch — <10% delta = cosmetic-only dateModified flip. WARN per Mueller on record + December 2025 core update enforcement. Stdlib-only; ~10s-2min audit-budget impact when enabled.
+
+- **Check 9.fanout.heuristic** + **9.fanout.advisory.** Structural retrievability proxy for Query Fan-Out: ≥3 question-shaped H2/H3 headings, ≥3 distinct named entities in headings, FAQPage/HowTo schema OR `<dl>`/`<details>` answer blocks, avg paragraph length 40-150 words (chunkable LLM-friendly band). Honest about the limitation: cannot enumerate actual fan-out queries without an LLM probe. The advisory points consumers at Locomotive Agency / QueryBurst / Otterly for true fan-out audits. Optional opt-in LLM probe deferred to v1.4 (mirrors v0.5 curation-scaffold pattern).
+
+- **`docs/decisions/0001-claim-verification.md` ADR.** Documents the three folklore-emission patterns surfaced across the two research passes (precise-percentage-no-methodology; submit-to-product-that-doesn't-exist; single-source-boundaries-smoothed-to-precision) and ratifies the verification-subagent reflex as the standing pattern for new check candidates.
+
+### Changed
+
+- **`audit.sh`** registers check 13. Default `--checks` block unchanged (1-10); opt in with `--checks 1-13` or `--checks 13`.
+
+- **`scripts/check-schema.py`** 2.8 per-page HTML sampling loop refactored: now finds ALL inline JSON-LD blocks (was: first only) and parses each. Per-page malformed semantics improved from "first-block-malformed" to "any-block-malformed" — more correct.
+
+- **`templates/.launch-readiness.yml.example`** gains six new config sections: check 13 (`ai_generated_imagery`, `merchant_feed`), check 7 (`target_engines`, `freshness_delta_check`, `freshness_delta_sample_size`), check 5 (`entity_hubs:` list override), check 2 (`news_publisher_us_english`).
+
+- **`SKILL.md` description + check count** bumped from 12 to 13 categories.
+
+- **`README.md`** Status block + capability table updated for 13 checks.
+
+- **`ROADMAP.md`** § "v1.3 candidates" cleared (all shipped); the longer-trail v1.3+ section (GSC live-API, CrUX longer-trend) is the next holding area. The v1.4 candidate registry expands implicitly with the deferred LLM-probe for check 9.
+
+### Local-validation results (against `thomasjankowski-site`)
+
+Smoke-tested against TJ's live build artifacts. Real-signal results:
+
+- **`2.4.schema_text_parity`: WARN** — 71% of JSON-LD string fields (66/93 across 22 unique strings) not present in rendered DOM. Specifically Person `description` and `hasOccupation.name` are schema-only. Confirms the v1.3 candidate is the highest-value check landed this release.
+- **`2.4.graph_consolidation`: INFO** — 9/10 sampled pages have >1 inline JSON-LD block. TJ emits both a consolidated `schema-graph.json` AND per-page inline JSON-LD; check catches the per-page fragmentation pattern.
+- **`2.4.about_mentions_usage`: PASS** — 10/10 sampled articles have disciplined `about` (1-3 entities). TJ adopted the entity-linking pattern.
+- **`5.5.entity_hub_coverage`: INFO** — 5/12 top-tier hubs present. Missing: Wikipedia, YouTube channel, Reddit, ORCID, GBP, Mastodon, Bluesky.
+- **`7.4.engine_freshness`: INFO** — median content age 9 days; 100% of URLs under all per-engine bands. TJ uses `sitemap_lastmod_mode: file_mtime`, so dates cluster around build.
+- **`9.fanout.heuristic`: INFO** — 0/249 pieces hit ≥3 of 4 retrievability signals. Editorial-by-design (TJ writes long-form essays, not Q&A). The advisory is the meaningful surface here, not the heuristic.
+- **`13.skipped`: INFO** — `ai_generated_imagery` not set (TJ's `--TJ x AI` hero figcaption pattern is content-side, not metadata-side).
+
+### Migration notes for v1.2.1 consumers
+
+No breaking changes. v1.2.1 invocations work unchanged.
+
+To opt into check 13 (imagery provenance):
+```yaml
+# .launch-readiness.yml
+ai_generated_imagery: true
+merchant_feed: true   # optional; raises severity for missing provenance
+```
+
+To opt into substantive-delta detection (check 7.5):
+```yaml
+freshness_delta_check: true
+freshness_delta_sample_size: 5   # default
+```
+
+To customize per-engine freshness bands (check 7.4):
+```yaml
+target_engines: [chatgpt, perplexity, aio]   # default
+```
+
+To customize the entity-hub list (check 5.5):
+```yaml
+entity_hubs:
+  - { name: "Wikipedia",       match: "wikipedia.org/wiki/" }
+  - { name: "ResearchGate",    match: "researchgate.net/profile/" }
+  # ... etc.
+```
+
+To preserve prior Speakable WARN behaviour (US-news-English publishers):
+```yaml
+news_publisher_us_english: true
+```
+
+### v1.4+ holding area
+
+- Opt-in LLM probe for check 9 Query Fan-Out (mirrors v0.5 curation-scaffold pattern; driver creates batches, subagent dispatches to Claude/Gemini for fan-out generation + coverage scoring; gated behind explicit config).
+- GSC live-API integration (still v1.3+; auth-complexity unresolved — RSA-SHA256 JWT signing).
+- CrUX longer-trend analysis (ASCII charts; built on v1.2's CSV substrate).
+
 ## [1.2.1] — 2026-05-15
 
 Small patch on top of v1.2. v1.2.1 is the result of a second recursive research pass: five parallel discovery subagents surveyed 2026 SEO/IEO/GEO shifts; six parallel verification subagents validated the highest-leverage candidates. **Three patterns SUPERSEDE prior framing** (llms.txt severity, FAQPage stance, Speakable default), five additive updates land alongside. Local-validated against `thomasjankowski-site` (the canonical consumer); the schema-parity finding fired on 5/5 sampled pages, confirming the v1.3 candidate will surface real signal.

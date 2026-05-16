@@ -4,7 +4,13 @@ What's beyond v1.0. Not a commitment; a holding area for candidates ranked by
 "would this catch a class of finding the skill misses today, and is it
 portable across consumers."
 
-## v1.3 candidates (Phase-2-verified)
+## v1.3 shipped (2026-05-15)
+
+All seven Phase-2-verified candidates landed in v1.3 — see
+`CHANGELOG.md` § [1.3.0]. The slate below remains as historical
+context for what was verified and what shipped where.
+
+## v1.3 candidates (Phase-2-verified, shipped)
 
 Seven candidates promoted from the May-2026 recursive-research pass (five
 discovery + six verification subagents). Each survived both Phase-2 evidence

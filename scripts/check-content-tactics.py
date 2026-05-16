@@ -241,6 +241,147 @@ def run(args) -> CheckResult:
                 title=f"Em-dash density: avg {avg_em:.2f}/500w (within range)",
             ))
 
+    # 9.fanout — Query Fan-Out retrievability proxy (v1.3).
+    #
+    # Google AI Mode decomposes user queries into 5-11+ sub-queries (Google
+    # Search Central + I/O 2025 blog primary docs). Pages that answer
+    # multiple sub-intents get cited at the chunk level — Surfer's 173,902-
+    # URL study found 67.82% of AIO citations rank outside top-10 for the
+    # parent query, corroborated by Ahrefs Feb 2026 (~62%).
+    #
+    # The CHECK CANNOT enumerate actual fan-out queries — those are model-
+    # generated and stochastic (only 27% reproducible per Surfer). So this
+    # is a STRUCTURAL RETRIEVABILITY PROXY: does the page expose the
+    # heading-and-passage shape that lets AI engines locate the chunk that
+    # answers each sub-query? Heuristic only; honest about the limitation
+    # in the finding notes. For true fan-out audits, use the operator
+    # advisory below.
+    #
+    # Heuristic per-piece signals (informed by Phase-2 verification):
+    #   1. ≥3 question-shaped H2/H3 headings (sub-intent coverage).
+    #   2. Entity diversity in headings (≥3 distinct named entities, very
+    #      loose title-case heuristic).
+    #   3. FAQPage/HowTo schema OR semantic <dl>/<details> answer blocks.
+    #   4. Passage-length variety (avg paragraph word count between 40-150
+    #      — chunkable LLM-friendly band).
+    QUESTION_STARTERS = (
+        "what", "how", "why", "when", "who", "where", "which",
+        "is", "are", "do", "does", "can", "should", "will", "would",
+    )
+    fanout_signals_count = 0
+    fanout_pieces_scored = 0
+    per_piece_signal_breakdown: list[tuple[str, int]] = []
+    for p in pieces:
+        text = p.read_text(encoding="utf-8")
+        signals = 0
+        # Signal 1: question-shaped headings (TSX-style + markdown).
+        heading_texts: list[str] = []
+        heading_texts.extend(re.findall(r"<h[23]\b[^>]*>(.*?)</h[23]>", text, re.DOTALL | re.IGNORECASE))
+        heading_texts.extend(re.findall(r"^\s*#{2,3}\s+(.+)$", text, re.MULTILINE))
+        clean_headings = [re.sub(r"<[^>]+>", "", h).strip() for h in heading_texts]
+        clean_headings = [h for h in clean_headings if h]
+        question_headings = sum(
+            1 for h in clean_headings
+            if h.rstrip().endswith("?")
+            or h.split()[0].lower() in QUESTION_STARTERS
+            if h.split()  # non-empty
+        )
+        if question_headings >= 3:
+            signals += 1
+        # Signal 2: entity diversity — title-cased multi-word phrases in
+        # headings (very rough; named-concepts proxy). Lower-bound 3
+        # distinct ≥2-word title-cased phrases across headings.
+        entity_set: set = set()
+        for h in clean_headings:
+            for m in re.findall(r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)+)\b", h):
+                entity_set.add(m)
+        if len(entity_set) >= 3:
+            signals += 1
+        # Signal 3: FAQ/HowTo schema OR semantic answer blocks.
+        if (
+            re.search(r"FAQPage|HowTo", text, re.IGNORECASE)
+            or re.search(r"<dl[\s>]|<details[\s>]", text, re.IGNORECASE)
+        ):
+            signals += 1
+        # Signal 4: passage-length variety (avg paragraph 40-150 words).
+        # Use the existing extract_body_text helper.
+        body = extract_body_text(text)
+        if body:
+            paragraphs = re.split(r"\n{2,}", body)
+            paragraphs = [p_ for p_ in paragraphs if len(p_.split()) >= 20]
+            if paragraphs:
+                avg_para_words = sum(len(p_.split()) for p_ in paragraphs) / len(paragraphs)
+                if 40 <= avg_para_words <= 150:
+                    signals += 1
+        per_piece_signal_breakdown.append((str(p.name), signals))
+        if signals >= 3:
+            fanout_signals_count += 1
+        if body and len(body.split()) >= 50:
+            fanout_pieces_scored += 1
+
+    if fanout_pieces_scored > 0:
+        pct_strong = fanout_signals_count * 100 / fanout_pieces_scored
+        severity = "PASS" if pct_strong >= 60 else "INFO"
+        result.findings.append(Finding(
+            id="9.fanout.heuristic", severity=severity,
+            title=(
+                f"{fanout_signals_count}/{fanout_pieces_scored} ({pct_strong:.0f}%) "
+                "pieces hit ≥3 of 4 Query Fan-Out retrievability signals"
+            ),
+            current={
+                "signal_distribution": {
+                    str(s): sum(1 for _n, sig in per_piece_signal_breakdown if sig == s)
+                    for s in range(5)
+                },
+                "signals_tested": [
+                    "≥3 question-shaped H2/H3 headings",
+                    "≥3 distinct named entities in headings",
+                    "FAQPage/HowTo schema OR <dl>/<details> answer blocks",
+                    "avg paragraph length 40-150 words (chunkable LLM-friendly band)",
+                ],
+            },
+            fix_safety="manual",
+            fix_action=(
+                "Reshape under-performing pieces: add question-shaped H2/H3s "
+                "(sub-intent coverage); structure answer blocks via <dl>/<details> "
+                "or FAQPage schema; trim or split paragraphs into the 40-150 "
+                "word chunkable band."
+            ),
+            notes=(
+                "Structural retrievability proxy; cannot enumerate actual "
+                "fan-out queries (model-generated, stochastic). Google Search "
+                "Central + I/O 2025 confirm the mechanism; Surfer 173,902-URL "
+                "+ Ahrefs Feb 2026 confirm 62-68% of AIO citations rank "
+                "outside the parent query's top-10. For true fan-out audits, "
+                "see 9.fanout.advisory."
+            ),
+        ))
+
+    # 9.fanout.advisory — pointer to true fan-out tools (always emit one
+    # INFO regardless of heuristic pass/fail).
+    result.findings.append(Finding(
+        id="9.fanout.advisory", severity="INFO",
+        title=(
+            "Query Fan-Out coverage requires LLM probe; heuristic check "
+            "above is a structural proxy only"
+        ),
+        fix_safety="manual",
+        fix_action=(
+            "For true fan-out audits with model-generated sub-queries: "
+            "Locomotive Agency's Query Fan-Out Tool (free, patent-methodology "
+            "simulation), QueryBurst (free), or Otterly.AI (free tier). The "
+            "audit's heuristic is informed by these tools' findings but does "
+            "not replicate model behavior."
+        ),
+        notes=(
+            "v1.4 candidate: optional opt-in LLM probe mirroring the v0.5 "
+            "curation-scaffold pattern (driver creates batches; subagent "
+            "dispatches to Claude/Gemini for fan-out generation + coverage "
+            "scoring). Not shipping in v1.3 — stays opt-in to honor the "
+            "no-paid-API + stdlib-only stance."
+        ),
+    ))
+
     # Coverage rating
     pct_summary = sum(counts.values()) / (len(counts) * total) * 100 if total else 0
     if pct_summary >= 60:

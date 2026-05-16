@@ -6,18 +6,19 @@ auditors (Screaming Frog, Sitebulb, Ahrefs, Lighthouse, Schema Markup
 Validator, Google Rich Results Test) will flag, plus the LLM-citation-side
 gaps the SEO tool ecosystem still under-covers.
 
-**Status:** 1.2.1 (small patch on top of v1.2). v1.2.1 is the result of a
-second recursive research pass (five discovery + six verification subagents):
-three patterns shifted enough in 2026 to require reframing existing logic
-(llms.txt severity downgrade — disconfirmed by 2026 large-N studies; FAQPage
-SERP-display vs IEO-extraction split; Speakable demoted outside
-US-news-English). Five additive UA / type / framing updates land alongside
-(`Google-Agent`, `Meta-ExternalFetcher`, `cohere-training-data-crawler` UAs;
-Schema.org v30.0 + 7 retired-rich-result types documented; LoAF
-recommendation in INP findings; Grok/DeepSeek undocumented-crawler INFO;
-AGENTS.md README disambiguation). The full v1.3 candidate slate from the
-Phase-2-verified research is tracked in ROADMAP. See `CHANGELOG.md` for the
-full v0.5 → v1.2.1 roll-up.
+**Status:** 1.3.0 (Phase-2-verified candidates landed). v1.3 ships seven
+new findings from the second-pass recursive research: schema↔visible-text
+parity (Google policy backstop; SearchVIU + Duck Test 2026 verified),
+@graph consolidation INFO (NLWeb-readiness; advisory), `about` vs
+`mentions` usage INFO, entity-hub `sameAs` coverage probe (top-tier hub
+list extending check 5 beyond Wikidata), per-engine freshness bands +
+substantive-delta detection via Wayback CDX (Mueller-on-record;
+December 2025 core update enforcement), Query Fan-Out heuristic
+retrievability proxy (structural-only; honest about LLM-probe limitation),
+and new opt-in **check 13** (AI-imagery provenance — IPTC `digitalSourceType`
++ C2PA; Google Merchant Center indexing-side, distinct from declined EU AI
+Act scope). Also ships ADR 0001 documenting the claim-verification reflex.
+See `CHANGELOG.md` for the full v0.5 → v1.3 roll-up.
 
 Add `.launch-readiness-report.*` to your repo's `.gitignore` to keep
 generated reports out of version control. The reports are local artifacts
@@ -25,7 +26,7 @@ that change on every run.
 
 ## What this skill does
 
-Twelve audit categories, each with cite-able rationale and concrete fixes:
+Thirteen audit categories, each with cite-able rationale and concrete fixes:
 
 | # | Category | Covers |
 |---|---|---|
@@ -41,6 +42,7 @@ Twelve audit categories, each with cite-able rationale and concrete fixes:
 | 10 | External backlinks | Free-tier Wayback CDX + Common Crawl + Open PageRank (with `OPR_API_KEY`). Observational, no FAIL severity |
 | 11 | Live-apex audit | Sitemap reachability, rendered-HTML JSON-LD, per-page meta drift, inline-link 404 detection, security-header consistency, discovery-artifact reachability, Screaming-Frog-parity title/H1/meta hygiene, redirect-chain audit, sitemap-vs-link reconciliation, duplicate meta-description detection, Brave Search indexability probe (Claude-citation eligibility, v1.1). Opt-in (requires live origin) |
 | 12 | Search Console cross-verification | Bing Webmaster API (GetUrlSubmissionQuota + GetCrawlStats; indexed-vs-sitemap delta, crawl errors, blocked pages). Google Search Console snapshot path (operator-exported JSON; indexed-vs-sitemap + excluded-reason taxonomy). v1.2, opt-in (network + operator-side export) |
+| 13 | Imagery provenance (C2PA / IPTC) | Reads `og:image` / `twitter:image` XMP for IPTC `digitalSourceType` (`trainedAlgorithmicMedia` / `compositeSynthetic`) + C2PA manifest markers. WARN when AI imagery declared but provenance absent (FAIL when `merchant_feed: true` — Google Merchant Center demotes non-compliant). Stdlib XMP parsing; no PIL/ExifRead. v1.3, opt-in via `ai_generated_imagery: true` |
 
 Checks 1-10 run against the source repo + built artifacts (`dist/`,
 `public/`, `out/`). Checks 11 + 12 run against the live apex (check 11)

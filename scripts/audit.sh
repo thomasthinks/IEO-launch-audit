@@ -138,6 +138,7 @@ declare -A CHECK_NAMES=(
   [10]="External backlinks"
   [11]="Live-apex audit"
   [12]="Search Console cross-verification"
+  [13]="Imagery provenance (C2PA / IPTC)"
 )
 
 # Map check number to script name
@@ -154,6 +155,7 @@ declare -A CHECK_SCRIPTS=(
   [10]="backlinks"
   [11]="live-apex"
   [12]="search-console"
+  [13]="imagery-provenance"
 )
 
 # Emit report header
