@@ -100,10 +100,29 @@ CITATION_CLASS_BOTS = [
     "PerplexityBot", "Perplexity-User", "Bingbot", "Applebot",
     "DuckAssistBot", "MistralAI-User", "GoogleOther", "Google-NotebookLM",
     "Amazonbot", "Meta-ExternalAgent",
+    # v1.2.1 additions:
+    # - Google-Agent: user-triggered fetcher for Gemini Agent + AI Mode,
+    #   added to Google's official crawler list on 2026-03-20. Citation-
+    #   class because it fetches at user prompt, not for training.
+    # - Meta-ExternalFetcher: user-prompted fetches from Meta AI products;
+    #   complements Meta-ExternalAgent (the crawler). Documented in the
+    #   ai-robots-txt project.
+    "Google-Agent", "Meta-ExternalFetcher",
 ]
 TRAINING_CLASS_BOTS = [
     "GPTBot", "ClaudeBot", "Google-Extended", "CCBot", "Applebot-Extended",
+    # v1.2.1 addition: Cohere's training-class crawler. Documented in
+    # the ai-robots-txt project; previously not enumerated in the skill.
+    "cohere-training-data-crawler",
 ]
+
+# v1.2.1 — undocumented-by-design crawlers that publish no stable
+# user agent and spoof browser fingerprints (per Cloudflare reporting,
+# 2025-2026). Flagged as a known-gap INFO so consumers know UA-based
+# policy alone is insufficient; bot-management at the WAF layer
+# (JA4 / JA3 TLS fingerprinting, behavioural heuristics) is the
+# practical defense. The audit cannot test for these via robots.txt.
+KNOWN_UNDOCUMENTED_AI_CRAWLERS = ["Grok (xAI)", "DeepSeek"]
 
 
 def parse_robots_txt(content: str) -> dict[str, list[str]]:
@@ -279,7 +298,16 @@ def run(args) -> CheckResult:
             fix_action="Add Bytespider Disallow in robots.txt + edge WAF rule.",
         ))
 
-    # 3.5 — llms.txt presence
+    # 3.5 — llms.txt presence (v1.2.1: severity downgraded WARN → INFO).
+    # 2026 disconfirmation: ~300K-domain SE Ranking analysis (Nov 2025)
+    # found zero statistically-significant correlation between llms.txt
+    # presence and AI citation rate. AEO Engine's 90-day study found
+    # 0.1% of AI-bot requests target llms.txt. No major LLM provider
+    # (OpenAI / Anthropic / Google / Meta / Mistral) commits to reading
+    # it in production as of Q1 2026. Primary value remaining: dev-tool
+    # context for Cursor / Claude Code / Codex (AGENTS.md serves that
+    # role explicitly now). Cheap to ship + harmless; not a citation
+    # lever. See SE Ranking + AEO Engine + AEO Press sources.
     llms_path = find_artifact(repo, config, "llms_txt", [
         "llms.txt", "public/llms.txt", "dist/public/llms.txt",
         "static/llms.txt", "out/llms.txt",
@@ -289,15 +317,54 @@ def run(args) -> CheckResult:
             id="3.5.llms_txt", severity="PASS",
             title="llms.txt present",
             current=str(llms_path.relative_to(repo)),
+            notes=(
+                "Cheap signal of editorial intent; no measured AI-citation "
+                "lift per 2026 large-N studies. Primary consumers are "
+                "developer tools, not search/answer engines."
+            ),
         ))
     else:
         result.findings.append(Finding(
-            id="3.5.llms_txt", severity="WARN",
-            title="llms.txt missing",
+            id="3.5.llms_txt", severity="INFO",
+            title="llms.txt missing (cheap-but-not-load-bearing in 2026)",
             fix_safety="safe",
             fix_template="templates/llms.txt",
-            fix_action="Emit llms.txt from template; populate pillar sections.",
+            fix_action=(
+                "Optional: emit llms.txt from template. 2026 disconfirmation: "
+                "SE Ranking 300K-domain study + AEO Engine 90-day bot-log "
+                "analysis show no measurable AI-citation lift. Major LLM "
+                "providers don't fetch it in production. Cheap and harmless "
+                "to ship; do not treat as a citation lever."
+            ),
         ))
+
+    # 3.5b — Known undocumented AI crawlers (v1.2.1 INFO).
+    # Grok (xAI) and DeepSeek publish no stable crawler user-agents and
+    # spoof browser fingerprints per Cloudflare's 2025-2026 reporting.
+    # robots.txt enforcement is impossible against them. Flagged here so
+    # consumers know UA-based policy alone leaves a gap; bot management
+    # at the WAF tier (JA4 TLS fingerprinting / behavioural heuristics)
+    # is the practical defense.
+    result.findings.append(Finding(
+        id="3.5b.undocumented_crawlers", severity="INFO",
+        title=(
+            f"{len(KNOWN_UNDOCUMENTED_AI_CRAWLERS)} AI crawler(s) publish no "
+            "documented user-agent and cannot be UA-blocked"
+        ),
+        current=KNOWN_UNDOCUMENTED_AI_CRAWLERS,
+        fix_safety="manual",
+        fix_action=(
+            "If blocking these matters, configure WAF-tier defenses "
+            "(Cloudflare bot management, JA4 fingerprinting, Vercel BotID). "
+            "robots.txt + UA-based audits cannot reach them by design."
+        ),
+        notes=(
+            "Cloudflare documented Grok spoofing Safari/Chrome UAs with "
+            "rotating IPs. DeepSeek publishes no crawler docs. Expect this "
+            "list to grow as more AI providers ship crawlers without "
+            "self-identification."
+        ),
+    ))
 
     # 3.6 — llms-full.txt presence
     llms_full_path = find_artifact(repo, config, "llms_full_txt", [

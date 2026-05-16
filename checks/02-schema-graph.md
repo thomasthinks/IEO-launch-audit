@@ -89,6 +89,35 @@ ImageObject).
 | **CiTO typed-citation coverage** (≥80% of `citation[]` entries carry a `[groundedBy]` / `[extendedBy]` / `[substantiatedBy]` / `[contradictedBy]` / `[discussedIn]` marker in description) — *v1.1, gated by `cito_enabled: true` (default); opt out for vanilla schema.org* | ≥80% | <80% | — |
 | **Speakable passage word-count band** (resolved selector text lands in 100-300 words, matching modal AI Overview output) — *v1.1, INFO severity; single-source empirical (xSeek 1M-query AIO dataset 2024)* | inside band | outside band → INFO | — |
 
+### 2.4.faqpage_howto_framing — FAQPage / HowTo dual-stance (v1.2.1)
+
+**SERP-display side:** Google retired FAQ rich results May 2026; Rich
+Results Test support removed June 2026. HowTo rich results were
+deprecated earlier (2023). Sites emitting these expecting visual
+rich-result UI in Google SERP get nothing.
+
+**IEO / GEO side:** ChatGPT Search, Perplexity, Claude web search, and
+AI Overviews still **parse FAQPage / HowTo for Q&A extraction**. The
+schema types remain load-bearing for AI-engine citation. The audit
+should NOT flag these as deprecated.
+
+When the consumer emits FAQPage or HowTo nodes:
+- Do not WARN on schema-deprecation grounds.
+- Optionally INFO-note that SERP-display rich results are gone but
+  AI-engine extraction value remains.
+
+Source: `references/schema-org-rules.json` § `_faqpage_howto_2026_05`.
+
+### 2.4.rich_result_retired — Retired rich-result types (v1.2.1)
+
+Seven schema types lost Google rich-result UI in January 2026: `Course`,
+`ClaimReview`, `EstimatedSalary`, `LearningVideo`, `SpecialAnnouncement`,
+`VehicleListing`, `PracticeProblem`. The types remain VALID schema.org
+vocabulary — still parsed for entity understanding + AI engine
+extraction. The audit treats these as INFO advisory when detected, not
+WARN. See `references/schema-org-rules.json` §
+`_rich_result_retired_2026_01`.
+
 ### 2.5 — ImageObject for hero images
 
 Each piece's hero image should be an ImageObject with `@id`, `url`,

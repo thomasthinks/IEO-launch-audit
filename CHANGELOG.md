@@ -3,6 +3,90 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.2.1] — 2026-05-15
+
+Small patch on top of v1.2. v1.2.1 is the result of a second recursive research pass: five parallel discovery subagents surveyed 2026 SEO/IEO/GEO shifts; six parallel verification subagents validated the highest-leverage candidates. **Three patterns SUPERSEDE prior framing** (llms.txt severity, FAQPage stance, Speakable default), five additive updates land alongside. Local-validated against `thomasjankowski-site` (the canonical consumer); the schema-parity finding fired on 5/5 sampled pages, confirming the v1.3 candidate will surface real signal.
+
+### Changed (supersedes prior framing)
+
+- **`check 3.5` (llms.txt) severity downgraded WARN → INFO.** 2026 disconfirmation: SE Ranking's ~300K-domain study (Nov 2025) found zero statistically-significant correlation between `llms.txt` presence and AI citation rate. AEO Engine's 90-day study found 0.1% of AI-bot requests target `llms.txt`. No major LLM provider (OpenAI / Anthropic / Google / Meta / Mistral) commits to reading it in production as of Q1 2026. Primary value remaining: developer-tool context (Cursor / Claude Code / Codex), and `AGENTS.md` now serves that role explicitly. The finding's prior "WARN if missing" framing implied a citation-eligibility cost that no longer holds; the audit emits INFO and notes that the signal is cheap-but-not-load-bearing.
+
+- **`checks/02-schema-graph.md` FAQPage / HowTo dual-stance.** Google retired FAQ rich results May 2026 + removed FAQ from Rich Results Test June 2026 (HowTo deprecated earlier, 2023). But the schema types remain LOAD-BEARING for IEO/GEO — ChatGPT Search, Perplexity, AI Overviews still parse FAQPage for Q&A extraction. The check 02 doc now splits "deprecated for SERP-display" (Google's stance) from "still load-bearing for AI-engine citation" (IEO best practice). Audit does not flag emitted FAQPage as deprecated; both stances coexist explicitly.
+
+- **`check 2.4.speakable` severity gate.** Speakable is officially **beta** at Google and only consumed by Google Assistant for US-English news. Confirmed in 2026: NOT used by AI Overviews / AI Mode for summarization. The array-vs-single-selector finding now demotes WARN → INFO outside US-news-English context. New config key `news_publisher_us_english: true` (default `false`) preserves prior WARN behaviour when consumer explicitly declares the role. The Speakable passage-length band finding (added v1.1) remains INFO regardless.
+
+### Added
+
+- **3 new AI-bot user-agents in check 03.** Citation-class: `Google-Agent` (user-triggered fetcher for Gemini Agent + AI Mode, added to Google's official crawler list 2026-03-20; PPC.land + SEJ documented), `Meta-ExternalFetcher` (user-prompted Meta AI fetches, complements `Meta-ExternalAgent`; ai-robots-txt project). Training-class: `cohere-training-data-crawler` (Cohere's training-class UA; ai-robots-txt project).
+
+- **Known-undocumented-crawler INFO finding (`3.5b.undocumented_crawlers`).** Flags xAI Grok + DeepSeek as crawlers that publish no documented user-agent and cannot be UA-blocked. Cite Cloudflare on Grok stealth-crawling. Recommendation: configure WAF-tier defenses (JA4 fingerprinting, Vercel BotID, Cloudflare bot management); the audit can't reach these via robots.txt by design.
+
+- **`_rich_result_retired_2026_01` block in `references/schema-org-rules.json`.** Documents the 7 schema types Google retired rich-result UI for in January 2026 (`Course`, `ClaimReview`, `EstimatedSalary`, `LearningVideo`, `SpecialAnnouncement`, `VehicleListing`, `PracticeProblem`). Types remain VALID schema.org vocabulary — still parsed for entity understanding + AI engine extraction. Audit treats detection as INFO advisory, not WARN. Schema.org rules version stamp bumped 2026-05c → 2026-05d; `schema_org_version` bumped 27.0 → 30.0 to reflect the March 2026 schema.org release.
+
+- **`_faqpage_howto_2026_05` block in `references/schema-org-rules.json`.** Documents the SERP-display deprecation vs IEO-extraction-value split. Cited from `checks/02-schema-graph.md` § 2.4.faqpage_howto_framing.
+
+- **`_deprecated_types` block** documents `GraphicNovel` deprecation (schema.org v29.4, Dec 2025) → `SequentialArt`.
+
+- **LoAF (Long Animation Frames) recommendation** in `_emit_crux_finding` when INP is failing. web-vitals v4 + LoAF (Chrome 123+, production 2026) report the long-task chain causing the slow INP interaction — diagnosis path beyond raw INP measurement. Notes text only; no new finding or check.
+
+- **`README.md` § "What this skill is NOT" — AGENTS.md disambiguation.** Clarifies that `AGENTS.md` (Linux Foundation Agentic AI Foundation, 60k+ open-source projects as of 2025-2026) is a repo-context file for coding agents (Cursor, Claude Code, Codex, Gemini CLI, Devin), NOT a crawler-policy file like `llms.txt`. The two operate at different protocol layers with different audiences. Skill does not audit `AGENTS.md` presence.
+
+### Local-validation results (against `thomasjankowski-site` canonical consumer)
+
+Validated four v1.3 candidates against TJ's live build artifacts:
+
+- **Schema↔visible-text parity:** **5/5 sampled pages have JSON-LD strings absent from rendered DOM.** Specifically Person `description` "Operator across AI, travel, and healthcare. Always a builder" + `hasOccupation.name` "Operator / Builder" appear in schema but not in any page's visible text. This is exactly the failure mode the v1.3 check would catch. **Promote candidate.**
+- **Entity-hub `sameAs` coverage:** TJ's Person `sameAs` carries 5/10 top-tier hubs (Wikidata, LinkedIn, GitHub, Crunchbase, X/Twitter). Missing: Wikipedia, YouTube, Reddit, ORCID, Mastodon. INFO-level finding would surface; operator decides priority. **Promote candidate as INFO check.**
+- **@graph consolidation:** TJ already consolidates (742 nodes, 742 distinct `@id`s, 2148 internal cross-references). Check would PASS on TJ. False-positive risk for fragmented sites: low. **Promote as INFO.**
+- **Median content age:** TJ median 9 days, p75 9 days, 100% under per-engine bands. TJ is a non-stress-test for the cliff check (uses `sitemap_lastmod_mode: file_mtime`, so dates cluster around build). The substantive-delta detection (Wayback CDX + text-diff, Phase-2-verified) is the more valuable companion finding for this consumer profile. **Promote with Wayback-CDX path as primary mechanism.**
+
+### v1.3 ROADMAP (Phase-2-verified slate)
+
+Seven candidates promoted from Phase-2 verification (see ROADMAP.md for detail):
+
+1. Schema↔visible-text parity (PASS; Google policy backstop).
+2. @graph consolidation INFO (NUANCED; advisory-tier).
+3. `about` vs `mentions` usage INFO (NUANCED; advisory-tier).
+4. Per-engine freshness bands + substantive-delta detection (PASS, Mueller-on-record).
+5. Entity-hub `sameAs` coverage probe (covers top-15 concentration + Google self-citation).
+6. Query Fan-Out heuristic proxy + INFO advisory (NUANCED; structural retrievability check).
+7. C2PA / IPTC `digitalSourceType` for AI imagery, gated on operator declaration (SHIP NARROW).
+
+### Declined / dropped (after verification)
+
+- "Information Gain operationalized at scale March 2026 / +22% lift" — press-release-tier folklore; no Google first-party. Existing check 9 (Princeton GEO tactics) is the de-facto IG proxy.
+- Unlinked brand mentions citation lift — marketing-blog tier, off-site only.
+- 40% sentiment suppression — single vendor source with incentive; no honest source-side proxy.
+- 13-week global recency cliff (specifically) — traces to one source (Amsive); per-engine bands more defensible.
+
+### Process learning
+
+Across two research passes now (`seo_learnings.md` verification + this one), three folklore-emission patterns surfaced repeatedly. Cataloging here so future passes catch them earlier:
+
+1. **Press-release-tier "X% lift in core update Y"** — Information Gain "+22%", "134-167 word Princeton thesis", "+34% structured-attribution-verb lift". Pattern: a specific percentage with no disclosed methodology, syndicated across vendor blogs that each cite each other.
+2. **"Submit to X" products that don't exist** — Brave Webmaster Tools (debunked v1.1).
+3. **Single-source "boundaries" smoothed into precise numbers** — 13-week cliff (Amsive only), 134-167 word range (Lattice Ocean only). Precise numbers in marketing posts that don't agree across sources.
+
+The verification-subagent reflex catches these. Worth a `docs/decisions/0001-claim-verification.md` ADR in v1.3.
+
+### Migration notes for v1.2.0 consumers
+
+No breaking changes. v1.2 invocations work unchanged.
+
+To preserve prior Speakable WARN behaviour (US-news-English publishers):
+```yaml
+# .launch-readiness.yml
+news_publisher_us_english: true
+```
+
+Sources for the changed-framing items:
+- llms.txt disconfirmation: [SE Ranking 300K-domain analysis](https://seranking.com/blog/llms-txt/); [AEO Engine zero-usage study](https://aeoengine.ai/blog/llms-txt-zero-usage-ai-bots-ignore); [aeo.press State of llms.txt 2026](https://www.aeo.press/ai/the-state-of-llms-txt-in-2026)
+- FAQPage / HowTo: [Google FAQPage developer docs](https://developers.google.com/search/docs/appearance/structured-data/faqpage); [SearchEngineLand on FAQ rich-results retirement](https://searchengineland.com/google-to-no-longer-support-faq-rich-results-476957)
+- Speakable: [Google Speakable docs](https://developers.google.com/search/docs/appearance/structured-data/speakable) (beta + US English news only)
+- Google-Agent UA: [PPC.land coverage](https://ppc.land/google-agent-joins-the-crawler-list-as-ai-browsing-gets-an-official-identity/); [SEJ](https://www.searchenginejournal.com/why-new-google-agent-may-be-a-pivot-related-to-openclaw-trend/570764/)
+- Grok stealth-crawling: [Cloudflare blog on Perplexity + general stealth pattern](https://blog.cloudflare.com/perplexity-is-using-stealth-undeclared-crawlers-to-evade-website-no-crawl-directives/)
+- LoAF: [Chrome for Developers — LoAF has shipped](https://developer.chrome.com/blog/loaf-has-shipped)
+
 ## [1.2.0] — 2026-05-15
 
 Monitoring + indexing-state release. v1.0 + v1.1 established the audit

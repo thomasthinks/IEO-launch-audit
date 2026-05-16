@@ -1,7 +1,29 @@
 {
-  "_comment": "Curated Schema.org type+property rules for IEO-launch-audit check 02 v0.5 (expanded v0.9, long-tail Article subtypes added v1.1). NOT exhaustive vs schema.org/version/latest; covers the types this skill audits: Article (+ subtypes: NewsArticle, BlogPosting, ScholarlyArticle, TechArticle, Report, AdvertiserContentArticle, OpinionNewsArticle, SatiricalArticle, BackgroundNewsArticle, AnalysisNewsArticle, AskPublicNewsArticle, ReportageNewsArticle, ReviewNewsArticle, SocialMediaPosting, DiscussionForumPosting — all inherit Article's required-property set), Person, Organization, WebSite, WebPage, BreadcrumbList, CollectionPage, ProfilePage, ImageObject, ItemList, ListItem, DefinedTerm, SpeakableSpecification, Occupation. Source: schema.org core vocabulary release notes through 2026-05. Update version field on each refresh so out-of-date drift is detectable.",
-  "version": "2026-05c",
-  "schema_org_version": "27.0",
+  "_comment": "Curated Schema.org type+property rules for IEO-launch-audit check 02 v0.5 (expanded v0.9, long-tail Article subtypes added v1.1, retired rich-results documented v1.2.1). NOT exhaustive vs schema.org/version/latest; covers the types this skill audits: Article (+ 15 subtypes: NewsArticle, BlogPosting, ScholarlyArticle, TechArticle, Report, AdvertiserContentArticle, OpinionNewsArticle, SatiricalArticle, BackgroundNewsArticle, AnalysisNewsArticle, AskPublicNewsArticle, ReportageNewsArticle, ReviewNewsArticle, SocialMediaPosting, DiscussionForumPosting — all inherit Article's required-property set), Person, Organization, WebSite, WebPage, BreadcrumbList, CollectionPage, ProfilePage, ImageObject, ItemList, ListItem, DefinedTerm, SpeakableSpecification, Occupation. Source: schema.org core vocabulary release notes through 2026-05. Update version field on each refresh so out-of-date drift is detectable.",
+  "version": "2026-05d",
+  "schema_org_version": "30.0",
+  "_rich_result_retired_2026_01": {
+    "purpose": "Google retired rich-result display for 7 schema types in January 2026. The types remain VALID schema.org vocabulary (still parsed for entity understanding + AI engine extraction) — only the SERP rich-result UI is gone. If the consumer is emitting these types expecting rich-result eligibility, the audit should advise the type is parsed but not visually rendered.",
+    "retired_types": [
+      "Course",
+      "ClaimReview",
+      "EstimatedSalary",
+      "LearningVideo",
+      "SpecialAnnouncement",
+      "VehicleListing",
+      "PracticeProblem"
+    ],
+    "google_announcement": "https://developers.google.com/search/updates",
+    "audit_treatment": "Detection is advisory only; the types are not deprecated. Cite this block when surfacing an INFO finding."
+  },
+  "_faqpage_howto_2026_05": {
+    "purpose": "Google retired FAQ rich results May 2026 + removed FAQ from Rich Results Test June 2026 (HowTo deprecated earlier, 2023). The schema types remain LOAD-BEARING for IEO/GEO — ChatGPT, Perplexity, AI Overviews still parse FAQPage for Q&A extraction. The audit should SPLIT advice: 'deprecated for SERP-display visibility' (Google's stance) from 'still load-bearing for AI engine citation' (IEO best practice).",
+    "google_announcement": "https://developers.google.com/search/docs/appearance/structured-data/faqpage",
+    "audit_treatment": "If consumer emits FAQPage, do NOT flag as deprecated; advise the dual-stance framing."
+  },
+  "_deprecated_types": {
+    "GraphicNovel": "Deprecated in schema.org v29.4 (Dec 2025); replaced by SequentialArt. Treat as a WARN with an offer-to-rename fix."
+  },
   "_web_validator": {
     "purpose": "Long-tail @types (Recipe, Product, VideoObject, Event, FAQPage, HowTo, Course, JobPosting, LocalBusiness, etc.) are NOT covered by the offline curated rules above. v0.6 ships an opt-in web-validator fallback (check 2.10) that POSTs uncovered-type nodes to validator.schema.org for advisory validation.",
     "endpoint": "https://validator.schema.org/validate (unofficial; hosted by Google; no API contract; rate-limited; output shape may change without notice).",

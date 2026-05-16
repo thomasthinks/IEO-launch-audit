@@ -6,15 +6,18 @@ auditors (Screaming Frog, Sitebulb, Ahrefs, Lighthouse, Schema Markup
 Validator, Google Rich Results Test) will flag, plus the LLM-citation-side
 gaps the SEO tool ecosystem still under-covers.
 
-**Status:** 1.2.0 (monitoring + indexing-state release). v1.0 declared
-production-ready; v1.1 added verified post-extraction candidates (Brave probe,
-exact-match anchor, Speakable length band, CiTO toggle, long-tail subtypes);
-v1.2 adds the post-launch monitoring + indexing-state layer: per-piece
-wordCount frontmatter validation, `crux-trend.py` CSV-trend helper, new
-opt-in **check 12** (Bing Webmaster API + GSC snapshot cross-verification),
-and a `templates/scheduled-audit.md` recipe for /loop / /schedule / cron /
-GitHub Actions wrapping. See `CHANGELOG.md` for the full v0.5 → v1.2
-roll-up.
+**Status:** 1.2.1 (small patch on top of v1.2). v1.2.1 is the result of a
+second recursive research pass (five discovery + six verification subagents):
+three patterns shifted enough in 2026 to require reframing existing logic
+(llms.txt severity downgrade — disconfirmed by 2026 large-N studies; FAQPage
+SERP-display vs IEO-extraction split; Speakable demoted outside
+US-news-English). Five additive UA / type / framing updates land alongside
+(`Google-Agent`, `Meta-ExternalFetcher`, `cohere-training-data-crawler` UAs;
+Schema.org v30.0 + 7 retired-rich-result types documented; LoAF
+recommendation in INP findings; Grok/DeepSeek undocumented-crawler INFO;
+AGENTS.md README disambiguation). The full v1.3 candidate slate from the
+Phase-2-verified research is tracked in ROADMAP. See `CHANGELOG.md` for the
+full v0.5 → v1.2.1 roll-up.
 
 Add `.launch-readiness-report.*` to your repo's `.gitignore` to keep
 generated reports out of version control. The reports are local artifacts
@@ -164,6 +167,13 @@ versioned in `CHANGELOG.md`.
 - Not a paid-API consumer. Every network surface is free-tier or
   free-with-opt-in-key (PSI, Open PageRank, Cloudflare). Backlinks via
   Wayback + Common Crawl, not Ahrefs/Moz/Majestic.
+- Not an `AGENTS.md` auditor. `AGENTS.md` (Linux Foundation Agentic AI
+  Foundation) is a **repo-context file for coding agents** (Cursor,
+  Claude Code, Codex, Gemini CLI, Devin, etc.) — not a crawler-policy
+  surface like `llms.txt`. The two operate at different protocol layers
+  with different audiences. This skill does not audit `AGENTS.md`
+  presence or content; if you want repo-context guidance, write one,
+  but don't expect it to affect AI-engine citation.
 
 ## License
 

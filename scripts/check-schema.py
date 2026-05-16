@@ -645,7 +645,18 @@ def run(args) -> CheckResult:
             fix_action="Add about (DefinedTerm), publisher, copyrightHolder, copyrightYear, mentions.",
         ))
 
-        # 2.4b — Speakable selector array
+        # 2.4b — Speakable selector array.
+        #
+        # v1.2.1 severity gate: Speakable is officially **beta** at Google
+        # and only consumed by Google Assistant for US-English news.
+        # Confirmed in 2026: NOT used by AI Overviews / AI Mode for
+        # summarization. For consumers outside US-news-English context,
+        # the array-vs-single-selector finding demotes from WARN to INFO
+        # (Speakable still helps a niche surface, but isn't load-bearing).
+        # When the consumer explicitly declares `news_publisher_us_english:
+        # true` in .launch-readiness.yml, prior WARN behaviour is preserved.
+        is_us_news = bool(config.get("news_publisher_us_english", False))
+        speakable_warn_sev = "WARN" if is_us_news else "INFO"
         with_speakable = [a for a in sample if "speakable" in a]
         if with_speakable:
             arr_count = sum(1 for a in with_speakable
@@ -658,11 +669,18 @@ def run(args) -> CheckResult:
                 ))
             else:
                 result.findings.append(Finding(
-                    id="2.4.speakable", severity="WARN",
+                    id="2.4.speakable", severity=speakable_warn_sev,
                     title=f"Speakable cssSelector is single selector on {len(with_speakable) - arr_count}/{len(with_speakable)} sampled articles",
                     expected="Array of 2+ shallow selectors for resilient extraction",
                     fix_safety="safe",
                     fix_action="Set cssSelector to ['[data-thesis-block]', 'h1', '[data-pull-quote]'].",
+                    notes=(
+                        "Speakable is beta + Google-Assistant-only (US English news). "
+                        "Not used by AI Overviews / AI Mode for summarization. "
+                        "Severity defaults to INFO outside US-news-English context; "
+                        "set `news_publisher_us_english: true` in .launch-readiness.yml "
+                        "to restore WARN."
+                    ),
                 ))
 
         # 2.4c — mentions[] as @id refs (not inline objects)

@@ -359,10 +359,26 @@ def _emit_crux_finding(result: CheckResult, finding_id: str, scope: str,
     )
     if sev != "PASS":
         finding.fix_safety = "manual"
-        finding.notes = (
+        base_notes = (
             f"CrUX field {metric_label.upper()} is the Google ranking signal; "
             "75th-percentile across real-user sessions in the last 28 days."
         )
+        # v1.2.1: when INP is failing, recommend Long Animation Frames (LoAF)
+        # as the cause-layer diagnostic. LoAF shipped Chrome 123 (production
+        # in 2026); web-vitals JS lib v4 attaches LoAF data to each INP
+        # interaction so the operator can localize the culprit long task
+        # rather than guessing.
+        if metric_short == "inp":
+            finding.notes = (
+                base_notes
+                + " Diagnosis path: instrument with web-vitals v4 + Long "
+                "Animation Frames (LoAF, shipped Chrome 123) — LoAF reports "
+                "the long-task chain causing the slow INP interaction so you "
+                "can fix the specific script, not guess. See "
+                "developer.chrome.com/blog/loaf-has-shipped."
+            )
+        else:
+            finding.notes = base_notes
     result.findings.append(finding)
 
 
