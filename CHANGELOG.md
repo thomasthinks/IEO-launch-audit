@@ -3,6 +3,56 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.6.3] — 2026-05-20
+
+Doc-only patch. Ships `ARCHITECTURE.md` at the repo root — a durable
+single-document map of the skill's architecture at v1.6.2. Intended
+audience: maintainers, contributors, and any Claude Code agent dropped
+into this repo without prior context.
+
+### Added
+
+- **`ARCHITECTURE.md`** (~310 lines). Consolidates the v1.6.2 state
+  into one readable document. Sections:
+  - What the skill is (SEO + IEO + GEO scope).
+  - The 14 audit checks (default vs opt-in table).
+  - The self-improving loop (Phase A / B / B+ / C / D) with
+    Phase D deferral.
+  - Operator UX (inspect-state CLI).
+  - The research discipline (ADR 0001: two reflexes, 8 corpora,
+    budget calibration, PROMOTE/DEMOTE/KILL disposition format).
+  - File map.
+  - Architecture invariants (10 invariants preserved at every layer).
+  - What's deferred to v1.7+ with explicit triggers.
+  - When this document is wrong (living-doc update protocol).
+
+Closes the v1.3 → v1.6 architectural arc with a durable single-page
+reference. Update on each architectural shift; trails CHANGELOG by
+at most one release.
+
+### Why this exists
+
+The v1.3 → v1.6 arc (11 releases this session) introduced substantial
+architectural surface: ADR 0001 v1.4.1 amendment, ADR 0002 ratification,
+Phase A state-file substrate, Phase B GSC/Bing delta, Phase B+
+substantive-edit pairing, Phase C auto-research routine, operator UX
+CLI. Each piece is documented in its own place (ADRs, check docs,
+script docstrings, CHANGELOG), but the connective tissue — how the
+pieces fit together architecturally — was scattered.
+
+ARCHITECTURE.md is the connective-tissue document. New maintainers
+read it first. Future agents (Claude Code sessions) read it when
+dropped into the repo without conversation context.
+
+### Changed
+
+- **`SKILL.md`** version 1.6.2 → 1.6.3.
+
+### Migration notes
+
+No code changes. No audit-output changes. No behavior changes.
+Documentation-only addition.
+
 ## [1.6.2] — 2026-05-20
 
 Closes a named architectural gap from the v1.5.2 CHANGELOG ("Phase B+
