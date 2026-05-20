@@ -3,6 +3,78 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.4.1] — 2026-05-20
+
+ADR-only patch. The v1.4 GEO/pGEO research pass surfaced a structural
+shortcoming in ADR 0001: the verification reflex is defensive — it
+catches folklore but doesn't push toward finding the strongest available
+evidence for surviving candidates. The v1.4 candidate slate emerged
+from a thin corpus (Google web search + vendor blogs + arXiv);
+verification dutifully killed three candidates but never asked "what's
+the strongest evidence FOR the survivors I haven't found yet?"
+
+This patch amends ADR 0001 with a paired "steelman reflex" — a
+generative discipline that runs alongside verification. The two compose
+into a per-candidate two-pass pipeline: steelman finds verbatim
+evidence; verification attacks it; only candidates that survive both
+promote to the candidate slate.
+
+### Changed
+
+- **`docs/decisions/0001-claim-verification.md`** — new section
+  "The steelman reflex (added v1.4.1)" capturing:
+  - **Definition.** Opposite incentive structure to verification —
+    steelman is incentivized to find evidence; verification is
+    incentivized to attack it.
+  - **What a steelman subagent does.** Takes a hypothesis; searches
+    expanded corpora; returns **verbatim quotes with source URLs**
+    (not paraphrases); tags source tier explicitly per finding;
+    exhausts corpora before reporting.
+  - **Expanded corpora — mandatory for major-pass steelman.** Eight
+    corpora in priority order: (1) academic / methodology-disclosed
+    primary research (arXiv sanity, Semantic Scholar, ACM DL, Papers
+    with Code, conference proceedings); (2) first-party platform
+    docs (developers.google.com, platform.claude.com, help.openai.com,
+    perplexity.ai/hub, learn.microsoft.com, blogs.bing.com,
+    brave.com/blog); (3) conference talk catalogs (BrightonSEO, SMX,
+    Pubcon, MozCon); (4) practitioner LinkedIn long-form (Indig, King,
+    Solís, Ray, Haynes, Shepard, Gabe, Critchlow, Kohn); (5) newsletter
+    back-issues (SEOFOMO, Growth Memo, Indie SEO, Search Engine
+    Roundtable); (6) practitioner subreddits (r/SEO, r/bigseo,
+    r/TechSEO); (7) YouTube speaker-series transcripts; (8) GitHub
+    awesome-lists + GEO-tooling repo discussions.
+  - **Budget expectation per pass.** Major-version pass: 5-7 discovery
+    subagents (60-100 tool uses each) + 3-5 steelman subagents (40-60
+    tool uses each) + 3-5 verification subagents attacking each
+    steelman finding. ~2-3h subagent runtime + ~30min consolidation.
+    Patch-level: 1-2 of each, ~30-60min. The v1.4-style "thin pass"
+    (2 discovery + 2 verification, ~30 tool uses each) is **no longer
+    sufficient** for major-version candidate slates.
+  - **Pipeline composition.** Steelman → verification, sequential.
+    Both required for any candidate that ships.
+  - **Failure mode + mandatory mitigation.** Steelman risks
+    regenerating folklore (incentivized to find evidence). Mitigations:
+    verbatim quotes only, source-tier tagging, verification re-fetches
+    source URL to confirm quote exists and means what steelman claimed.
+
+- **Consequences section** updated to reflect the budget shift (4-6
+  subagents → 11-17 subagents per major pass) and to add the new
+  failure mode (steelman without verification = folklore generator).
+
+### Why this lands as a patch, not a release with new checks
+
+Doc-only architectural amendment. No new checks; no audit-output
+changes; no run-time behavior changes. The amendment affects how
+future research passes are conducted, not how the current skill runs.
+
+The next major release (v1.5) will be the first candidate slate produced
+under the two-reflex discipline; this patch defines the discipline so
+the v1.5 research pass can execute against an established contract.
+
+### Migration notes for v1.4.0 consumers
+
+No code changes; no audit-output changes; no breaking changes.
+
 ## [1.4.0] — 2026-05-20
 
 The "fold in all surviving v1.4 candidates" release. A two-pass GEO/pGEO

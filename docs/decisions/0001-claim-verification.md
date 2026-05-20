@@ -1,6 +1,6 @@
 # ADR 0001 — Claim-verification reflex for new check candidates
 
-**Status:** Accepted (v1.3, 2026-05-15; pattern 4 added v1.3.2, 2026-05-20)
+**Status:** Accepted (v1.3, 2026-05-15; pattern 4 added v1.3.2, 2026-05-20; steelman reflex added v1.4.1, 2026-05-20)
 **Context:** Two research passes against 2026 SEO/IEO/GEO discourse
 **Decision:** Every candidate sourced from third-party SEO discourse goes
 through a verification-subagent pass before promotion into the skill's
@@ -138,6 +138,125 @@ none exists, the percentage is folklore. Distinguish this from
 mechanism-claims that ARE publishable ("Claude uses dynamic filtering"
 is verifiable; "Claude weights aggregators 25% less" is not).
 
+## The steelman reflex (added v1.4.1)
+
+The verification reflex is structurally defensive — it catches folklore.
+Run alone, it produces a bias toward candidates whose evidence is
+weak-but-traceable over candidates whose evidence is strong-but-
+undiscovered. The v1.4 research pass surfaced this failure mode: the
+candidate slate emerged from a thin corpus (Google web search + vendor
+blogs + arXiv), and the verification pass dutifully verified the few
+claims that surfaced — without ever asking "what's the strongest
+evidence FOR this pattern that I haven't found yet?"
+
+The steelman reflex is the generative counterpart. For each candidate
+hypothesis, dispatch a subagent whose explicit task is to find the
+strongest available primary, first-party, or methodology-disclosed
+evidence FOR the hypothesis. Opposite incentive structure to the
+verification subagent: steelman is incentivized to find evidence;
+verification is incentivized to attack it.
+
+### What a steelman subagent does
+
+1. Takes a hypothesis (one-sentence statement of the pattern under test).
+2. Searches expanded corpora (see below) for evidence supporting it.
+3. Returns **verbatim quotes with source URLs**, not paraphrases.
+   Tags each finding with source tier (primary research / first-party
+   platform / methodology-disclosed industry study / practitioner
+   opinion).
+4. Exhausts the corpus list before reporting. Doesn't stop at first
+   hit — finds the strongest available evidence, which may not be the
+   first surfaced.
+
+### Expanded corpora (mandatory for major-pass steelman)
+
+The v1.4 research over-relied on Google web search + vendor blogs.
+Each major-pass steelman MUST sample beyond this. Corpora to mine,
+in priority order:
+
+1. **Academic / methodology-disclosed primary research.** arXiv sanity,
+   Semantic Scholar, ACM Digital Library, Papers with Code, conference
+   proceedings (NeurIPS, ICML, EMNLP, SIGIR, KDD, WWW).
+2. **First-party platform documentation.** developers.google.com,
+   platform.claude.com, help.openai.com, perplexity.ai/hub,
+   learn.microsoft.com, blogs.bing.com, brave.com/blog. Highest
+   signal-to-noise for engine-behavior claims; mine systematically.
+3. **Conference talk catalogs.** BrightonSEO, SMX (Munich / West /
+   East / Advanced), Pubcon, MozCon, SEOFOMO Live, SEO Discoveries.
+4. **Practitioner long-form on LinkedIn.** Named practitioners with
+   consistent 2026 GEO-side output: Kevin Indig, Mike King, Aleyda
+   Solís, Lily Ray, Marie Haynes, Cyrus Shepard, Glenn Gabe, Will
+   Critchlow, AJ Kohn. LinkedIn long-form is higher-signal than
+   vendor blogs (practitioner reputation is staked).
+5. **High-signal newsletter back-issues.** SEOFOMO, Growth Memo
+   (Indig), Indie SEO, Search Engine Roundtable.
+6. **Practitioner subreddits.** r/SEO, r/bigseo, r/TechSEO — filter
+   by karma + comment density + recency.
+7. **YouTube speaker-series transcripts.** Search Engine Land Live,
+   SMX YouTube post-event uploads, BrightonSEO channel, named-
+   practitioner channels.
+8. **GitHub awesome-lists + GEO-tooling repo discussions.**
+   awesome-llm-seo, awesome-geo, awesome-llmstxt, tooling-repo
+   issues + discussions reveal what practitioners are actually testing.
+
+A pass that hits only corpora 1+2 is fine for primary-source questions.
+A pass that hits only 4+6 is suspect (practitioner opinion without
+methodology anchoring). Mix tiers per pass.
+
+### Budget expectation per pass
+
+| Pass type | Discovery | Steelman | Verification | Runtime |
+|---|---|---|---|---|
+| **Major** (e.g., v1.4 → v1.5) | 5-7 parallel, 60-100 tool uses each | 3-5 on top hypotheses, 40-60 tool uses each | 3-5 attacking each steelman finding | ~2-3h subagent + ~30min consolidation |
+| **Patch** (e.g., v1.4.1 → v1.4.2) | 1-2 lightweight | 1-2 on the specific question | 1-2 | ~30-60min total |
+
+The v1.4-style thin pass (2 discovery + 2 verification, ~30 tool uses
+each) is **no longer sufficient** for major-version candidate slates.
+Patches may still use a thin pass when scoped to a single hypothesis.
+
+### Pipeline composition
+
+The two reflexes form a per-candidate two-pass pipeline:
+
+```
+candidate hypothesis
+        │
+        ▼
+   steelman pass ──── verbatim evidence + source URLs + tier tags
+        │
+        ▼
+   verification pass ── attacks each steelman finding per
+        │              folklore patterns 1-4 + verbatim-quote check
+        ▼
+   survives both? → promote to candidate slate
+                    else → reject; log reasoning in CHANGELOG / ADR
+```
+
+Steelman alone produces credulity. Verification alone produces
+shallowness. Both are required for any candidate that ships.
+
+### Failure mode of steelman + mandatory mitigation
+
+The steelman subagent's incentive structure ("find evidence FOR X")
+risks regenerating folklore — the subagent may surface vendor-blog
+claims that sound supportive but trace back to no methodology, OR
+paraphrase a finding into a stronger claim than the source actually
+makes (cf. pattern 3, single-source boundaries smoothed into precise
+numbers).
+
+Mitigations are not optional:
+
+- Steelman returns **verbatim quotes with source URLs**. No paraphrase
+  of empirical claims.
+- Source tier tagged explicitly per finding.
+- Verification subagent **re-fetches** the source URL and confirms the
+  verbatim quote exists at that URL and means what the steelman
+  subagent claimed it means.
+
+Verification is the load-bearing safety net for steelman. Steelman +
+verification together = research discipline. Steelman alone =
+folklore generator.
+
 ## The verification-subagent reflex
 
 For each candidate sourced from third-party SEO discourse:
@@ -165,19 +284,26 @@ This ADR ratifies the pattern as a default for future passes.
 **Positive:**
 - New checks promote with disclosed-evidence backing. The skill stays
   out of folklore.
-- The verification-subagent budget (4-6 parallel subagents per pass,
-  ~15-30 minutes total) is a small fraction of the cost of shipping a
-  folklore check + later regretting it.
+- The two-reflex discipline (steelman + verification, added v1.4.1)
+  closes the v1.4 failure mode where verification alone biased toward
+  weak-but-traceable evidence at the expense of strong-but-undiscovered
+  evidence.
 - The skill maintains the editorial discipline distinguishing "Google
   said this" from "vendor blogs say Google would say this."
 
 **Negative:**
-- Each candidate has a verification-pass tax before shipping. Slower
-  than just-ship-and-iterate.
-- The reflex doesn't catch first-order accuracy errors (a verification
-  subagent can be wrong about whether a primary source exists). Cross-
-  check load-bearing claims against the original document, not just the
+- Each candidate has a two-pass tax before shipping. Major-pass budget
+  expanded from v1.4's "thin pass" (~15-30 min, 4-6 subagents) to
+  v1.5+'s major-pass budget (~2-3h, 11-17 subagents across discovery +
+  steelman + verification). Worth the cost; named here so it's not
+  surprising at execution time.
+- The reflex doesn't catch first-order accuracy errors (a subagent can
+  be wrong about whether a primary source exists). Cross-check
+  load-bearing claims against the original document, not just the
   subagent's report.
+- Steelman without verification = folklore generator. The two reflexes
+  MUST run as a pair; running steelman alone is worse than running
+  verification alone.
 
 ## What would change this decision
 
