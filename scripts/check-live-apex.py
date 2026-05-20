@@ -459,12 +459,72 @@ def run(args) -> CheckResult:
     sample_n = min(DEFAULT_PIECE_SAMPLE, len(piece_urls))
     sample_pieces = random.sample(piece_urls, sample_n) if piece_urls else []
 
-    home_html = fetch(f"{apex}/")[2].decode(errors="replace")
-    about_html = fetch(f"{apex}/about")[2].decode(errors="replace")
-    pages: list[tuple[str, str]] = [("/", home_html), ("/about", about_html)]
+    # v1.6.4: capture HTTP status during page sampling so phases B / C / G
+    # don't parse 404 bodies as if they were real pages. Pre-v1.6.4, a
+    # missing baseline page (e.g., /about on a product site) caused a
+    # cascade of 6+ false-positive findings ("11.B.missing_jsonld",
+    # "11.G.desc_length", etc.) as the audit walked the 404 response body.
+    # Now: capture status during fetch; skip non-200 pages from per-page
+    # content-extraction phases; emit ONE consolidated MV finding.
+    home_status, _home_h, home_body = fetch(f"{apex}/")
+    about_status, _about_h, about_body = fetch(f"{apex}/about")
+
+    pages: list[tuple[str, str]] = []
+    missing_baseline_pages: list[tuple[str, int]] = []
+
+    if home_status == 200:
+        home_html = home_body.decode(errors="replace")
+        pages.append(("/", home_html))
+    else:
+        # Home unreachable is itself a finding — much more serious than
+        # /about missing (a product site is allowed to lack /about; a
+        # site is not allowed to lack /).
+        home_html = ""
+        result.findings.append(Finding(
+            id="11.0.home_unreachable", severity="FAIL",
+            title=f"Home page ({apex}/) returned HTTP {home_status}",
+            fix_action="Verify the apex serves a 200 response for /.",
+        ))
+
+    if about_status == 200:
+        about_html = about_body.decode(errors="replace")
+        pages.append(("/about", about_html))
+    else:
+        about_html = ""
+        missing_baseline_pages.append(("/about", about_status))
+
     for u in sample_pieces:
-        _c, _h, b = fetch(u)
-        pages.append((u, b.decode(errors="replace")))
+        p_status, _p_h, p_body = fetch(u)
+        if p_status == 200:
+            pages.append((u, p_body.decode(errors="replace")))
+        else:
+            missing_baseline_pages.append((u, p_status))
+
+    if missing_baseline_pages:
+        result.findings.append(Finding(
+            id="11.0.expected_pages_missing", severity="MANUAL_VERIFY",
+            title=(
+                f"{len(missing_baseline_pages)} expected page(s) returned "
+                "non-200 during baseline sampling; content-extraction phases "
+                "skip these URLs"
+            ),
+            current=[f"{u} (HTTP {s})" for u, s in missing_baseline_pages],
+            fix_action=(
+                "If a baseline page (e.g., /about) should exist, create it. "
+                "If the page is intentionally absent (e.g., product sites that "
+                "don't have a personal /about), this finding is benign — content-"
+                "extraction phases (B / C / G) correctly skip non-200 URLs so "
+                "they don't cascade false-positive 'missing X' findings."
+            ),
+            notes=(
+                "v1.6.4: prevents the 404-body-cascade bug where phases B "
+                "(JSON-LD) / C (per-page meta) / G (title-h1-meta hygiene) "
+                "used to parse the 404 response body as if it were the "
+                "intended page, generating spurious 'missing title / JSON-LD / "
+                "h1 / etc.' findings. Phases now only walk URLs that returned "
+                "200; this MV finding consolidates the skipped-URLs report."
+            ),
+        ))
 
     # ---- Phase B: JSON-LD audit ---------------------------------------
     type_counter: Counter = Counter()

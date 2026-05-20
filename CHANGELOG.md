@@ -3,6 +3,122 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.6.4] — 2026-05-20
+
+Bug fix from real consumer feedback. v1.6.x ran against a product-site
+audit (pdfops.dev) and surfaced a check-11 cascade: when a baseline-
+sampled page (`/about`) returned HTTP 404, phases B / C / G walked the
+404 response body as if it were the intended page, generating 6+
+false-positive "missing X" findings. The consumer-side audit agent had
+to manually triage signal from noise. v1.6.4 closes the bug at the
+source.
+
+### Fixed
+
+- **`scripts/check-live-apex.py` baseline page sampling** (lines
+  ~462-528 of `run()`). Pre-v1.6.4 code captured page bodies without
+  checking HTTP status:
+
+  ```python
+  # Old (v1.6.3 and earlier):
+  home_html = fetch(f"{apex}/")[2].decode(errors="replace")
+  about_html = fetch(f"{apex}/about")[2].decode(errors="replace")
+  pages = [("/", home_html), ("/about", about_html)]
+  # ↑ /about 404 body silently became "the /about page" for phases B / C / G
+  ```
+
+  New code captures status, includes only 200-responding pages in the
+  per-page extraction list, and consolidates missing baseline pages
+  into ONE MANUAL_VERIFY finding:
+
+  ```python
+  # New (v1.6.4):
+  home_status, _h, home_body = fetch(f"{apex}/")
+  about_status, _h, about_body = fetch(f"{apex}/about")
+  pages = []
+  if home_status == 200: pages.append(("/", home_body.decode(...)))
+  else: result.findings.append(Finding(id="11.0.home_unreachable", FAIL))
+  if about_status == 200: pages.append(("/about", about_body.decode(...)))
+  else: missing_baseline_pages.append(("/about", about_status))
+  # ... + emit 11.0.expected_pages_missing MV consolidating misses
+  ```
+
+  Two new findings introduced:
+
+  - `11.0.home_unreachable` (FAIL) — when the home page itself returns
+    non-200. Real broken site; deserves its own finding.
+  - `11.0.expected_pages_missing` (MANUAL_VERIFY) — consolidates all
+    other baseline pages that returned non-200 into one finding. Tells
+    the consumer which URLs were skipped and why, with framing that
+    distinguishes "real gap (page should exist)" from "intentional
+    absence (product site without personal /about)."
+
+### Why this matters
+
+Before v1.6.4, the cascade poisoned audit reports for any consumer
+without `/about` (i.e., most product sites). A consumer reading their
+audit report saw findings like:
+- `11.B.missing_jsonld` (1 page) — confusingly cryptic
+- `11.G.title_too_short` (1 page)
+- `11.G.no_h1` (1 page)
+- `11.G.desc_length` (1 page)
+- `11.C.missing_canonical` (1 page)
+- `11.C.no_og_image` (1 page)
+
+All six were the same URL (the 404 page), all six were false positives,
+and none of the finding bodies disclosed they came from a 404. The
+consumer (or their agent) had to do manual triage to discover the
+common URL + check it returned 404 + flag the cascade as noise.
+
+Post-v1.6.4: ONE finding (`11.0.expected_pages_missing` MV) discloses
+the missing URLs directly with a fix-action that distinguishes "create
+the page" from "intentional product-site shape."
+
+### What this surfaced about the v1.6 architecture
+
+Real consumer feedback flowed end-to-end exactly as ADR 0002 designed.
+The consumer-side session ran the audit, recognized the cascade as
+suspicious ("the '1 page' repeating across multiple findings is
+suspicious"), curled the URL to confirm 404, separated real signal from
+false positives, and drafted a fix proposal in the same shape as the
+prior `mainEntity` rule patch (v1.3.1). Maintainer-side (this session)
+shipped the fix. Loop closed.
+
+ADR 0002 Decision 3 + 4 (advisory-only auto-learn; never auto-mutate)
+hold: the consumer-side agent didn't modify the skill. It surfaced the
+bug + the maintainer ratified the fix.
+
+### Changed
+
+- **`SKILL.md`** version 1.6.3 → 1.6.4.
+- **`README.md`** Status line updated.
+
+### Migration notes
+
+No new config required. No breaking changes. Behavior changes:
+
+1. Consumers without `/about` will see `11.0.expected_pages_missing`
+   MANUAL_VERIFY instead of 6+ cascaded false positives.
+2. Consumers with `/about` returning 200 see zero behavior change.
+3. A new `11.0.home_unreachable` FAIL is now possible if the apex
+   home page returns non-200 (previously this caused undefined
+   behavior — the audit walked the 404 body).
+
+### Other bugs from the same consumer run, queued for follow-up
+
+The pdfops.dev audit surfaced 4 additional skill-side issues. Logged
+for v1.6.5 / v1.6.6:
+
+- **Orphan false positives (check 11.I)** from sample-only link-graph
+  not crawling listing pages (`/blog/`, `/writing/`). MEDIUM severity.
+- **Non-HTML extensions flagged** as un-sitemapped (`.pdf`, `.xml`).
+  LOW; one filter line.
+- **Personal-portfolio URL shape assumption** in check 7.3 (hardcoded
+  `/writing`, `/about`, `/contact`). LOW; config-driven baseline-pages
+  list.
+- **`/image-sitemap.xml` flagged** when not needed (no conditional gate
+  on actual image-emit count). LOW.
+
 ## [1.6.3] — 2026-05-20
 
 Doc-only patch. Ships `ARCHITECTURE.md` at the repo root — a durable
