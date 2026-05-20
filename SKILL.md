@@ -56,9 +56,11 @@ from, the failure mode it catches, and the concrete fix.
 
 ## What it covers
 
-Eleven audit categories, each in `checks/NN-<name>.md`. Checks 1-10
-operate on the source repo + built artifacts; check 11 operates on the
-live apex origin (opt-in; requires the production host to be reachable).
+Fourteen audit categories, each in `checks/NN-<name>.md`. Checks 1-10
+operate on the source repo + built artifacts and run by default;
+checks 11-14 are opt-in (live-apex behavior + indexing-state +
+provenance + DOM-side semantic markup that the source-side checks
+can't see).
 
 1. **Technical SEO** — HTTP headers (HSTS/CSP/Referrer-Policy/Permissions-Policy), canonical URLs, 404 status correctness, mobile-first viewport, hero-image attributes (LCP+CLS), sitemap `lastmod` accuracy.
 2. **Schema.org graph** — JSON-LD validation + completeness. `WebSite` root, absolute `@id` URLs, per-page `WebPage`, Person properties (`hasOccupation`, `mainEntityOfPage`), Article completeness (`about`, `articleSection`, `publisher`, `copyrightHolder`), `ImageObject` for heroes, `CollectionPage.mainEntity` → `ItemList`, ProfilePage `hasPart` linkage, Speakable selector array. Optional web-validator fallback (2.10) covers @types not in the offline catalogue.
@@ -70,7 +72,10 @@ live apex origin (opt-in; requires the production host to be reachable).
 8. **Internal-link quality** — Catches the TFIDF-distinctive-phrase trap (mechanical phrase-match ≠ topical relevance). Recommends LLM-curated inline + curated end-of-piece related-block.
 9. **Content tactics (advisory)** — GEO content-side levers from Princeton/Georgia Tech (KDD 2024) + 2025-2026 follow-ups: thesis-first via Speakable, inline author byline, first-party data inline, named citations, direct quotation, Q&A subheads, stable named concepts. Per-piece audit is high-cost; surfaces structural recommendations rather than auto-fixing.
 10. **External backlinks (observational)** — Free-tier query of Wayback CDX, Common Crawl index, and Open PageRank (when `OPR_API_KEY` is set) to report archived snapshots, unique referring/archive domains, and domain rank. Pre-flip INFO; no FAIL severity (backlinks are emergent, not gating).
-11. **Live-apex audit (post-flip)** — Phases 0/A-J. Sitemap reachability, JSON-LD rendered-HTML audit, per-page meta drift, inline-link 404 detection, security-header consistency across routes, discovery-artifact reachability, title/H1/meta-description hygiene (Screaming-Frog-parity), redirect-chain hygiene, sitemap-vs-link-graph reconciliation, duplicate meta-description detection. Excluded from the default run; opt in with `--checks 11` or `--checks 1,2,...,11`.
+11. **Live-apex audit (post-flip, opt-in)** — Phases 0/A-J. Sitemap reachability, JSON-LD rendered-HTML audit, per-page meta drift, inline-link 404 detection, security-header consistency across routes, discovery-artifact reachability, title/H1/meta-description hygiene (Screaming-Frog-parity), redirect-chain hygiene, sitemap-vs-link-graph reconciliation, duplicate meta-description detection. Optional Brave Search indexability probe (phase K) when `brave_api_key` is configured. Excluded from the default run; opt in with `--checks 11` or `--checks 1-11`.
+12. **Search Console cross-verification (opt-in)** — Bing Webmaster API (impressions, clicks, crawl-stats, indexed-count) when `bing_webmaster_api_key` configured; Google Search Console index snapshot (operator-exported JSON) when `gsc_index_snapshot_path` configured. Cross-verifies indexed URL count against sitemap URL count to catch silent indexing drift. Opt in with `--checks 12` or `--checks 1-12`.
+13. **Imagery provenance (C2PA / IPTC, opt-in)** — Walks sampled `og:image` / `twitter:image` targets, resolves to local file or remote Range-fetch, scans XMP for IPTC `digitalSourceType` (`trainedAlgorithmicMedia` / `compositeSynthetic`) + C2PA manifest markers. Gated on `ai_generated_imagery: true`. Escalates WARN→FAIL when `merchant_feed: true` (Google Merchant Center demotes / removes non-compliant AI product images). Stdlib XMP parsing; no PIL / ExifRead.
+14. **Multimodal markup (opt-in)** — Walks sampled HTML, restricts to `<main>` / `<article>` scope when present, audits figcaption density on content images, alt-text density, and `<table>` presence (excludes nav/header/footer). Gated on `multimodal_markup_check: true`. Backs the SearchVIU 2025 + Williams-Cook Duck Test (Feb 2026) "visible HTML wins" principle and Aleyda Solís AI-search checklist's multimodal-markup recommendations. Default INFO/PASS; WARN only on unambiguously sparse pages with ≥3 content images.
 
 ## When to use
 
