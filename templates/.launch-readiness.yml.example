@@ -391,6 +391,25 @@ web_validator_fallback: false
 # brave_probe_query: "Brand Name"    # query to issue; defaults to the
 #                                     # bare apex host (e.g. example.com)
 
+# Multi-UA crawler probe (phase L, v1.5.1).
+#
+# Fetches the apex as each documented AI-bot UA (GPTBot, OAI-SearchBot,
+# ClaudeBot, Claude-SearchBot, PerplexityBot, Google-Extended) and
+# compares response status + body size vs a baseline browser-UA fetch.
+# Catches CDN/hosting-layer AI-bot blocks invisible to source-side audits
+# (check 3 only sees robots.txt; this catches the CDN tier).
+#
+# Verified motivating evidence: Aleyda Solis on Humans of Martech Ep 202
+# (Jan 13 2026) — "I realized my hosting company was blocking AI bots…
+# I only found it because I dug deep into the validation." Cloudflare's
+# July 2025 default-block opt-in-at-signup affects every new domain.
+# HUMAN Security per-crawler spoof ratios (1:5 ChatGPT-User → 1:88
+# Perplexity-User) validate UA+IP cross-check as the detection method.
+#
+# 1 baseline + 6 AI-bot fetches per audit run. Opt-in to honor the
+# "no surprise network probes" stance.
+# multi_ua_probe: false
+
 # -------------------------------------------------------------------
 # Curation scaffold (v0.5+)
 # -------------------------------------------------------------------

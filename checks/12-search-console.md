@@ -24,6 +24,57 @@ report](https://support.google.com/webmasters/answer/7440203);
 [Bing's index-rejection classifier — Fabrice Canel, SMX Munich 2025];
 [GSC excluded-reasons taxonomy](https://support.google.com/webmasters/answer/7440203#excluded).
 
+## Cross-engine citation portfolio (don't aggregate)
+
+A v1.5.1 framing addition surfaced by the deep 2026 research pass. When
+consumers also run LLM-citation tracking (Profound / Otterly / BrightEdge /
+SE Ranking / Semrush AI Visibility / Brave probe / GSC AI-mode impressions),
+**they should NOT aggregate citations into a single "AI visibility" score**.
+
+Three independent methodology-disclosed studies converge on narrow
+cross-engine citation overlap:
+
+- **Kevin Indig, "The Consensus Gap" (May 2026).** 3.7M URL citations
+  sampled across ChatGPT + Perplexity + Google AIO, weighted by Omnia
+  customer geography (Spain-heavy, EU-skewed): **2.37% of cited URLs
+  appear across all three engines simultaneously; 91.07% appear in only
+  one.** Source: [growth-memo.com/p/the-consensus-gap](https://www.growth-memo.com/p/the-consensus-gap).
+- **SISTRIX (Hanns Kronenberg, May 2026).** 82,619 prompts → 1,548,213
+  snapshots × 17 weeks × 6 countries × 3 platforms (AIO + AI Mode +
+  ChatGPT Search). Jaccard 0.17 between AIO and Google AI Mode —
+  **even within Google's own products, only 17% of cited domains overlap**.
+  Jaccard 0.125 between AI Mode and ChatGPT Search. Source:
+  [sistrix.com](https://www.sistrix.com/blog/ai-citation-drift-how-stable-are-sources-in-ai-search-results/).
+- **arXiv:2510.11560 "Characterizing Web Search in the Age of Generative
+  AI" (Oct 2025).** 4,606 queries × 5 systems (Google Organic, AIO,
+  Gemini-2.5-Flash, GPT-4o Search, GPT-4o-with-Search-Tool). 53% of AIO-
+  cited domains are absent from the top-10 organic Google results. Intra-
+  engine temporal Jaccard: AIO ~18% across 2-month intervals (i.e., even
+  within AIO alone, only 18% of citations persist across 2 months).
+
+**Implication for check 12 output:** the skill should report Bing + GSC
++ any consumer-supplied LLM-citation snapshots **per-engine independently**,
+never as a single aggregate. Drift between engines is the dominant
+signal, not consensus across them.
+
+**Mandatory caveats when citing the evidence:**
+
+- Indig data is **EU-weighted** (Spain + UK + Nordics). Generalization
+  to US-market may not hold magnitude; direction-of-bias holds.
+- All three studies cover **3-5 engines**; **none covers ChatGPT +
+  Claude + Gemini + Perplexity + AIO + AI Mode + Copilot simultaneously**.
+  Any "AI engines do X" claim by a consumer should be checked against
+  the engine-coverage of their evidence source.
+
+**Strategic implication for entity-hub coverage (check 5) + backlinks
+(check 10):** Nature Communications 2025 measured that **fewer than 10
+distinct URLs cover 80% of LLM responses per query**. Once a site enters
+the top-cited set for a topic, it locks in; sites outside that set rarely
+break in regardless of content quality. This means entity-hub presence
+(check 5) and authoritative-domain backlinks (check 10) matter
+disproportionately — not as a continuous quality dial, but as a discrete
+hub-presence threshold.
+
 ## What's checked
 
 ### 12.bing — Bing Webmaster API path

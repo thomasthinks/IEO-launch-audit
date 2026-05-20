@@ -15,7 +15,7 @@ Origin priority:
 
 If no origin can be resolved the check returns NOT_APPLICABLE.
 
-Ten phases:
+Twelve phases (A-J default; K + L opt-in):
   A. Sitemap reachability sweep (HEAD every URL; flag non-2xx / 308 drift).
   B. JSON-LD audit on home + about + N sampled pieces (parse / present /
      type-baseline). Article subtypes (NewsArticle, BlogPosting,
@@ -35,6 +35,15 @@ Ten phases:
   I. Orphan-page + un-sitemapped-link detection (sitemap vs internal-link
      graph reconciliation across home + about + sampled pieces).
   J. Meta-description duplicate detection across sampled pages.
+  K. Brave Search indexability probe (opt-in via `brave_api_key`).
+     Anthropic Claude.ai web-search routes through Brave; visibility is
+     the practical Claude-citation eligibility lever.
+  L. Multi-UA crawler probe (opt-in via `multi_ua_probe: true`, v1.5.1).
+     Fetches apex as GPTBot / OAI-SearchBot / ClaudeBot / Claude-SearchBot /
+     PerplexityBot / Google-Extended; compares response status + body
+     size vs baseline browser UA. Catches CDN-layer AI-bot blocks
+     invisible to source-side audits (Cloudflare default-block, AWS WAF,
+     etc.).
 
 Phases G-J reuse the existing page + link samples (no extra apex fetches).
 """
@@ -64,6 +73,21 @@ UA = (
     "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 "
     "IEO-launch-audit/live-apex"
 )
+
+# v1.5.1 — phase L multi-UA crawler probe. Issued as the canonical UA
+# strings each engine publishes, verbatim. Source: each engine's first-
+# party bot docs (developers.openai.com/api/docs/bots,
+# support.claude.com/en/articles/8896518,
+# docs.perplexity.ai/docs/resources/perplexity-crawlers,
+# developers.google.com/search/docs/crawling-indexing/google-common-crawlers).
+AI_BOT_UAS = {
+    "GPTBot": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.0; +https://openai.com/gptbot",
+    "OAI-SearchBot": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot",
+    "ClaudeBot": "Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)",
+    "Claude-SearchBot": "Mozilla/5.0 (compatible; Claude-SearchBot/1.0; +https://www.anthropic.com)",
+    "PerplexityBot": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot.html",
+    "Google-Extended": "Google-Extended",
+}
 
 # Schema.org Article + subtypes that satisfy the per-piece "carries Article
 # JSON-LD" baseline. Per Schema.org: NewsArticle, BlogPosting,
@@ -1254,6 +1278,145 @@ def run(args) -> CheckResult:
                     ),
                     notes=(
                         "Single Brave-API call per audit run. Free-tier quota: 2k/month."
+                    ),
+                ))
+
+    # ---- Phase L: multi-UA crawler probe (v1.5.1, opt-in) ------------
+    #
+    # Source-side audits cannot see CDN-layer / hosting-layer AI-bot
+    # blocks: an apex that serves cleanly to a browser may serve 403/429
+    # or significantly-shorter bodies when fetched as GPTBot / ClaudeBot /
+    # PerplexityBot / OAI-SearchBot. Verified evidence for the failure
+    # mode + detection method:
+    #
+    # - Aleyda Solis on Humans of Martech Ep 202 (Jan 13, 2026): "I
+    #   realized my hosting company was blocking AI bots. All the answers
+    #   looked wrong and the share of voice was terrible. I only found
+    #   it because I dug deep into the validation."
+    # - Cloudflare default-block (opt-in-at-signup, July 2025): every new
+    #   Cloudflare domain is prompted at signup with default-block as the
+    #   recommended answer. 416B AI-bot requests blocked at edge July →
+    #   Dec 2025 (Matthew Prince, WIRED interview Dec 2025).
+    # - HUMAN Security: AI-crawler UA spoofing rates 1:5 (ChatGPT-User)
+    #   to 1:88 (Perplexity-User) — UA-spoofing is real; UA+IP cross-
+    #   check is the verified detection method.
+    #
+    # Opt-in via `multi_ua_probe: true` in `.launch-readiness.yml`.
+    # Default off to honor "no surprise network probes" stance. When
+    # enabled: 1 baseline fetch + N AI-bot fetches (N=6 by default).
+    if config.get("multi_ua_probe") is True:
+        baseline_code, _baseline_h, baseline_body = fetch(apex)
+        if baseline_code != 200:
+            result.findings.append(Finding(
+                id="11.L.multi_ua_skip", severity="MANUAL_VERIFY",
+                title=(
+                    f"Multi-UA probe skipped: baseline fetch of {apex} returned "
+                    f"HTTP {baseline_code}"
+                ),
+                notes=(
+                    "Baseline browser-UA fetch must succeed (200) before "
+                    "AI-bot UA comparisons are meaningful."
+                ),
+            ))
+        else:
+            baseline_size = len(baseline_body) if baseline_body else 0
+            ua_results: list[tuple[str, int, int]] = []  # (name, code, body_size)
+            for ua_name, ua_string in AI_BOT_UAS.items():
+                try:
+                    req = urllib.request.Request(
+                        apex,
+                        method="GET",
+                        headers={"User-Agent": ua_string},
+                    )
+                    with urllib.request.urlopen(req, timeout=20) as r:
+                        body = r.read()
+                        ua_results.append((ua_name, r.status, len(body)))
+                except urllib.error.HTTPError as e:
+                    ua_results.append((ua_name, e.code, 0))
+                except (urllib.error.URLError, TimeoutError, OSError):
+                    ua_results.append((ua_name, 0, 0))
+
+            blocked: list[str] = []
+            shrunk: list[str] = []
+            ok: list[str] = []
+            unreachable: list[str] = []
+            for ua_name, code, size in ua_results:
+                if code == 0:
+                    unreachable.append(ua_name)
+                elif code in (403, 429, 503):
+                    blocked.append(f"{ua_name} (HTTP {code})")
+                elif code == 200 and baseline_size > 0 and size < baseline_size * 0.7:
+                    pct = size * 100 / baseline_size
+                    shrunk.append(f"{ua_name} ({pct:.0f}% of baseline size)")
+                elif code == 200:
+                    ok.append(ua_name)
+
+            if blocked:
+                result.findings.append(Finding(
+                    id="11.L.ai_bot_blocked", severity="WARN",
+                    title=(
+                        f"{len(blocked)} of {len(AI_BOT_UAS)} AI-bot UAs receive "
+                        "HTTP 403/429/503 from live apex (CDN/hosting-layer block)"
+                    ),
+                    current=blocked,
+                    expected="AI bots receive same 200 response as baseline browser UA",
+                    fix_safety="manual",
+                    fix_action=(
+                        "Check CDN bot-management settings (Cloudflare bot fight "
+                        "mode, AWS WAF managed rules, Fastly bot detection). "
+                        "Cloudflare's July 2025 default-block setting prompts new "
+                        "domains at signup with default-block as recommended; "
+                        "existing zones inherit prior setting. If AI-bot citation "
+                        "eligibility is desired, set the override per-engine in "
+                        "the CDN bot-management UI."
+                    ),
+                    notes=(
+                        f"Baseline browser-UA fetch: {baseline_size} bytes. "
+                        f"AI-bot results: blocked={blocked}, ok={ok}, "
+                        f"shrunk={shrunk}, unreachable={unreachable}. "
+                        "Robots.txt blocks would be visible to source-side audits "
+                        "(check 3) — this finding catches the CDN-layer block "
+                        "INVISIBLE to source-side."
+                    ),
+                ))
+            elif shrunk:
+                result.findings.append(Finding(
+                    id="11.L.ai_bot_shrunk", severity="INFO",
+                    title=(
+                        f"{len(shrunk)} of {len(AI_BOT_UAS)} AI-bot UAs receive "
+                        "significantly smaller body than baseline (possible "
+                        "Cloudflare interstitial / WAF challenge / partial content)"
+                    ),
+                    current=shrunk,
+                    notes=(
+                        f"Baseline: {baseline_size} bytes. AI-bot UAs receive "
+                        "<70% of baseline body size — likely a CAPTCHA / WAF "
+                        "challenge page rather than real content. Verify by "
+                        "curl-ing manually with the UA string."
+                    ),
+                ))
+            elif unreachable and len(unreachable) == len(AI_BOT_UAS):
+                result.findings.append(Finding(
+                    id="11.L.multi_ua_network_error", severity="MANUAL_VERIFY",
+                    title="All AI-bot UA fetches failed at network level",
+                    notes=(
+                        f"Baseline browser UA succeeded ({baseline_size} bytes) "
+                        "but all AI-bot UAs failed (timeout / DNS / TLS). Likely "
+                        "transient; re-run."
+                    ),
+                ))
+            else:
+                result.findings.append(Finding(
+                    id="11.L.multi_ua_clean", severity="PASS",
+                    title=(
+                        f"All {len(ok)} probed AI-bot UAs receive 200 + comparable "
+                        "body size from live apex"
+                    ),
+                    notes=(
+                        f"Probed: {sorted(AI_BOT_UAS.keys())}. Baseline: "
+                        f"{baseline_size} bytes. No CDN-layer AI-bot block "
+                        "detected on the apex itself. (Per-path / per-route "
+                        "blocks may still exist — this probe tests apex only.)"
                     ),
                 ))
 

@@ -1536,13 +1536,26 @@ def run(args) -> CheckResult:
                         fix_action=(
                             "Ensure each JSON-LD string field (name, headline, "
                             "description, articleBody, about.name) is also present "
-                            "in the rendered HTML body. LLM fetchers tokenize "
-                            "JSON-LD as raw text — schema-only content is "
-                            "functionally invisible to ChatGPT / Claude / Perplexity / "
-                            "Gemini per controlled tests (SearchVIU 2025, "
-                            "Williams-Cook Duck Test 2026). Also a Google policy "
-                            "violation: 'Don't mark up content that is not visible "
-                            "to readers of the page.'"
+                            "in the rendered HTML body. Three independent 2026 "
+                            "studies converge: (a) SearchVIU 2025 controlled "
+                            "experiment — 5/5 systems extracted only visible HTML "
+                            "during direct retrieval; (b) Ahrefs 1,885-page "
+                            "difference-in-differences (Mar 2026) — adding JSON-LD "
+                            "produced AIO −4.6% / AI Mode +2.4% / ChatGPT +2.2%, "
+                            "indistinguishable from zero; (c) OtterlyAI Mar 2026 "
+                            "tracking — 6 of 7 platforms can't access schema markup "
+                            "when directly queried. Also a Google policy violation: "
+                            "'Don't mark up content that is not visible to readers "
+                            "of the page.' **Phase-scoped caveat:** this finding "
+                            "covers direct-retrieval pathways; indexing + training "
+                            "pathways are unmeasured and schema may still help there."
+                        ),
+                        notes=(
+                            "Schema-text parity is the load-bearing surface. Not all "
+                            "engines treat JSON-LD identically: Bing's NLWeb + Yoast "
+                            "Schema Aggregator suggest indexing-side schema parsing; "
+                            "Google's AI optimization guide explicitly states "
+                            "structured data is NOT required for generative AI search."
                         ),
                     ))
 

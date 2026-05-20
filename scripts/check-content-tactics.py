@@ -104,6 +104,52 @@ def em_dash_density(body: str) -> float:
     return em_dashes / words * 500
 
 
+# v1.5.1 — check 9.10 front-loading signals.
+#
+# Indig "The science of how AI pays attention" (Growth Memo, Feb 2026):
+# 18,012 verified citations from 1.2M ChatGPT responses; 44.2% from first
+# 30% of text; entity density 20.6% in cited text vs 5-8% baseline;
+# definitive language in 36.2% of cited text vs 20.2% uncited. p<0.0001.
+# All-MiniLM-L6-v2 semantic embeddings @ cosine 0.55.
+#
+# Mechanistic prior: Liu et al. "Lost in the Middle" (TACL 2024,
+# peer-reviewed) — LLMs preferentially attend to beginning + end of
+# context. Verified primary, but measures in-context retrieval not
+# web-citation; cite as mechanism, not direct replication.
+#
+# ChatGPT-only boundary is mandatory in finding text (Indig's data is
+# ChatGPT-only).
+_DECLARATIVE_COPULA_RE = re.compile(
+    r"\b\w[\w\-]+\s+(is|are|means|refers\s+to|involves|denotes|describes)\s+\w",
+    re.IGNORECASE,
+)
+
+
+def front_loading_signals(body: str) -> tuple[bool, int]:
+    """Compute front-loading signals over the first 30% of body text.
+
+    Returns (has_declarative_claim, entity_count_first_30pct):
+    - has_declarative_claim: True if the first 30% of words contains
+      at least one declarative copula pattern (X is Y / X means Y /
+      X refers to Y / X involves Y / X denotes Y / X describes Y).
+    - entity_count_first_30pct: count of distinct multi-word title-
+      cased phrases in the first 30% (proxy for named entity density).
+    """
+    words = body.split()
+    if len(words) < 60:
+        return False, 0
+    first_30_words = words[: max(60, int(len(words) * 0.30))]
+    first_30_text = " ".join(first_30_words)
+    has_claim = bool(_DECLARATIVE_COPULA_RE.search(first_30_text))
+    entities = set()
+    for m in re.findall(
+        r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)+)\b",
+        first_30_text,
+    ):
+        entities.add(m)
+    return has_claim, len(entities)
+
+
 @time_check
 def run(args) -> CheckResult:
     repo = Path(args.repo)
@@ -143,6 +189,11 @@ def run(args) -> CheckResult:
     sentence_stddevs: list[float] = []
     transition_densities: list[float] = []
     em_dash_densities: list[float] = []
+    # v1.5.1: front-loading aggregates (check 9.10).
+    front_loaded_pieces = 0       # pieces with claim + ≥2 entities in first 30%
+    pieces_with_claim = 0
+    pieces_with_entity_density = 0   # ≥2 entities in first 30%
+    front_loading_scored = 0      # pieces with ≥60w body (denominator)
 
     total = len(pieces)
     for p in pieces:
@@ -173,6 +224,17 @@ def run(args) -> CheckResult:
                 sentence_stddevs.append(s)
             transition_densities.append(transition_word_density(body))
             em_dash_densities.append(em_dash_density(body))
+
+        # v1.5.1: 9.10 front-loading signals.
+        if body and len(body.split()) >= 60:
+            front_loading_scored += 1
+            has_claim, entity_count = front_loading_signals(body)
+            if has_claim:
+                pieces_with_claim += 1
+            if entity_count >= 2:
+                pieces_with_entity_density += 1
+            if has_claim and entity_count >= 2:
+                front_loaded_pieces += 1
 
     # Translate to findings
     def pct(n: int) -> float:
@@ -240,6 +302,64 @@ def run(args) -> CheckResult:
                 id="9.fp.em_dashes", severity="PASS",
                 title=f"Em-dash density: avg {avg_em:.2f}/500w (within range)",
             ))
+
+    # 9.10 — Front-loading positional signals (v1.5.1).
+    #
+    # Indig "The science of how AI pays attention" (Growth Memo Feb 2026)
+    # measured 18,012 ChatGPT citations and found 44.2% concentrated in the
+    # first 30% of text; entity density 20.6% in cited passages vs 5-8%
+    # baseline; definitive language in 36.2% of cited text vs 20.2% uncited.
+    # Methodology disclosed: all-MiniLM-L6-v2 sentence embeddings @ cosine
+    # 0.55, p<0.0001. ChatGPT-only — boundary preserved in finding text.
+    #
+    # Heuristic per piece (first 30% of body words):
+    #   - declarative copula (X is Y / X means Y / X refers to Y / etc.)
+    #   - ≥2 distinct title-cased multi-word entities (proxy for entity density)
+    # A piece is "front-loaded" when both signals fire.
+    if front_loading_scored > 0:
+        pct_front_loaded = front_loaded_pieces * 100 / front_loading_scored
+        pct_claim = pieces_with_claim * 100 / front_loading_scored
+        pct_entity = pieces_with_entity_density * 100 / front_loading_scored
+        if pct_front_loaded >= 60:
+            severity = "PASS"
+        elif pct_front_loaded >= 30:
+            severity = "INFO"
+        else:
+            severity = "WARN"
+        result.findings.append(Finding(
+            id="9.10.front_loading", severity=severity,
+            title=(
+                f"{front_loaded_pieces}/{front_loading_scored} "
+                f"({pct_front_loaded:.0f}%) pieces front-load a declarative "
+                "claim + ≥2 entities in the first 30% of body text"
+            ),
+            current={
+                "pieces_with_declarative_claim_in_first_30pct": (
+                    f"{pieces_with_claim}/{front_loading_scored} ({pct_claim:.0f}%)"
+                ),
+                "pieces_with_entity_density_in_first_30pct": (
+                    f"{pieces_with_entity_density}/{front_loading_scored} ({pct_entity:.0f}%)"
+                ),
+            },
+            fix_safety="manual",
+            fix_action=(
+                "For pieces that fail: rewrite the opening so the first ~30% "
+                "carries the main definitional claim (X is Y / X means Y) AND "
+                "≥2 named entities (people, products, places, terms). Resist "
+                "throat-clearing intros. The thesis-first checkpoint (9.1) is "
+                "adjacent — same intent, different lens."
+            ),
+            notes=(
+                "Mechanism: Liu et al. 'Lost in the Middle' (TACL 2024, "
+                "peer-reviewed) — LLMs preferentially attend to beginning + "
+                "end of context. Production-side observation: Indig 18K-"
+                "citation methodology (44.2% / first 30%). **ChatGPT-only** "
+                "boundary; not yet replicated on Claude / Gemini / Perplexity / "
+                "AIO with disclosed methodology. PASS ≥60%, INFO 30-60%, WARN "
+                "<30% of pieces front-loaded. Heuristic only — entity density "
+                "uses title-cased phrase proxy, not full NER."
+            ),
+        ))
 
     # 9.fanout — Query Fan-Out retrievability proxy (v1.3).
     #

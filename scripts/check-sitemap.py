@@ -487,14 +487,30 @@ def run(args) -> CheckResult:
                     fix_safety="manual",
                     fix_action=(
                         "Review the flagged URLs. If dateModified bumped without "
-                        "substantive content change, Google's December 2025 core "
-                        "update treats this as low-trust signal noise (Mueller on "
-                        "record). Either revert the date or add substantive content."
+                        "substantive content change, the consequence is dual: "
+                        "(a) Google's December 2025 core update treats cosmetic "
+                        "flips as low-trust signal noise (industry post-mortem "
+                        "consensus; Mueller on record about scaled minor edits); "
+                        "(b) LLM rerankers have measurable recency bias — arXiv:"
+                        "2509.11353 'Do Large Language Models Favor Recent Content?' "
+                        "(ACM SIGIR-AP 2025, peer-reviewed) measured rank shifts of "
+                        "up to 95 positions and pairwise-preference reversals of up "
+                        "to 25% on average across 7 LLMs (GPT-3.5/4/4o, LLaMA-3 "
+                        "8B/70B, Qwen-2.5 7B/72B) with synthetic date injection on "
+                        "TREC DL21+DL22 (p<0.05). Either revert the date or add "
+                        "substantive content."
                     ),
                     notes=(
                         f"Sample: {scored} scored, {len(delta_unverifiable)} unverifiable. "
                         "Threshold: <10% delta = cosmetic. Method: Wayback CDX "
-                        "content-digest API + difflib.SequenceMatcher on visible-text diff."
+                        "content-digest API + difflib.SequenceMatcher on visible-text diff. "
+                        "**Scope of the arXiv:2509.11353 evidence:** LLM-as-reranker "
+                        "behavior on TREC passages (controlled experiment), NOT "
+                        "production-citation telemetry. Pair with Ahrefs 16.975M-"
+                        "citation study (Jul 2025, ChatGPT cites content 393-458 "
+                        "days newer than organic) for production-side observation, "
+                        "and Bing's May 2026 grounding statement: 'In grounding, a "
+                        "stale fact produces a misleading response.'"
                     ),
                 ))
             else:

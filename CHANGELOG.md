@@ -3,6 +3,164 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.5.1] — 2026-05-20
+
+The v1.4.1 deep research pass closes out. Five firm candidates that
+survived steelman + verification ship atop Phase A. Each finding-text
+preserves the verification-mandated caveats (engine-coverage, Phase-4
+scope, ChatGPT-only boundary, EU-skew where applicable).
+
+### Added
+
+- **Check 9.10 — first-30% positional check.** New sub-check in
+  `scripts/check-content-tactics.py`. For each content piece with
+  body ≥60 words, extract the first 30% of body text and detect:
+  (a) declarative copula pattern (X is Y / X means Y / X refers to Y /
+  X involves Y / X denotes Y / X describes Y); (b) ≥2 distinct multi-
+  word title-cased phrases as a named-entity proxy. A piece is
+  "front-loaded" when both fire. Severity gradient: PASS ≥60%, INFO
+  30-60%, WARN <30% of pieces.
+
+  **Evidence:** Kevin Indig "The science of how AI pays attention"
+  (Growth Memo Feb 2026) — 18,012 verified citations from 1.2M ChatGPT
+  responses, 44.2% in first 30% of text, entity density 20.6% in cited
+  text vs 5-8% baseline, p<0.0001. all-MiniLM-L6-v2 embeddings at
+  cosine 0.55. Methodology fully disclosed; verified primary. Mechanistic
+  prior: Liu et al. "Lost in the Middle" (TACL 2024, peer-reviewed) —
+  LLMs preferentially attend to beginning + end of context.
+
+  **Mandatory caveats in finding text:** ChatGPT-only boundary (Indig's
+  data is single-engine); Liu et al. measures in-context retrieval,
+  not web-citation, so use as mechanism not direct replication; entity
+  density heuristic uses title-cased phrase proxy, not full NER.
+
+- **Check 11.L — multi-UA live-apex crawler probe (opt-in).** New
+  phase in `scripts/check-live-apex.py`. Gated on `multi_ua_probe: true`
+  in `.launch-readiness.yml` (default off). When opted-in: 1 baseline
+  browser-UA fetch of apex + 6 AI-bot UA fetches (GPTBot, OAI-SearchBot,
+  ClaudeBot, Claude-SearchBot, PerplexityBot, Google-Extended). Compares
+  response status + body size. Emits:
+  - `11.L.multi_ua_clean` (PASS) — all AI bots get 200 + comparable body
+  - `11.L.ai_bot_blocked` (WARN) — ≥1 bot gets 403/429/503
+  - `11.L.ai_bot_shrunk` (INFO) — ≥1 bot gets <70% baseline body (likely
+    WAF challenge / interstitial)
+  - `11.L.multi_ua_skip` (MANUAL_VERIFY) — baseline fetch failed
+
+  **Evidence:** Aleyda Solis on Humans of Martech Ep 202 (Jan 2026) —
+  "I realized my hosting company was blocking AI bots… I only found
+  it because I dug deep into the validation." Cloudflare default-block
+  (July 2025, opt-in-at-signup mechanism per Cloudflare press release;
+  416B AI-bot requests blocked at edge July → Dec 2025). HUMAN Security
+  per-crawler spoof ratios (1:5 ChatGPT-User → 1:88 Perplexity-User)
+  validate UA+IP cross-check as the detection method.
+
+  **Mandatory framing fix from verification:** Cloudflare mechanism is
+  opt-in-at-signup, not silent auto-block on every zone. BuiltWith
+  robots.txt-block adoption numbers (5.6M GPTBot, 5.8M ClaudeBot) are
+  source-side detectable and adjacent context, not core evidence.
+
+### Changed
+
+- **Check 2.4.schema_text_parity finding text strengthened** in
+  `scripts/check-schema.py`. Fix-action now cites three independent
+  methodology-disclosed studies converging on JSON-LD invisibility
+  during direct retrieval: (a) SearchVIU 2025 5/5-systems experiment;
+  (b) Ahrefs 1,885-page DiD (Mar 2026) — AIO −4.6%, AI Mode +2.4%,
+  ChatGPT +2.2%; (c) OtterlyAI Mar 2026 self-attribution ("6 of 7
+  platforms can't access schema markup when directly queried").
+  Phase-4-only scope caveat added: this covers direct-retrieval
+  pathways; indexing + training pathways are unmeasured and schema
+  may still help there.
+
+- **Check 7.5.substantive_delta finding text strengthened** in
+  `scripts/check-sitemap.py`. Fix-action now cites arXiv:2509.11353
+  ACM SIGIR-AP 2025 peer-reviewed evidence: rank shifts of up to 95
+  positions, pairwise-preference reversals up to 25% on average across
+  7 LLMs with synthetic date injection, p<0.05. Pairs with Ahrefs
+  16.975M-citation field study (Jul 2025) showing ChatGPT cites
+  content 393-458 days newer than organic results, and Bing's May 2026
+  first-party grounding statement: *"In grounding, a stale fact
+  produces a misleading response."* Scope caveat on arXiv evidence
+  preserved (LLM-as-reranker on TREC passages, NOT production-citation
+  telemetry).
+
+- **`checks/12-search-console.md` — new section "Cross-engine citation
+  portfolio (don't aggregate)".** Documents the three converging
+  methodology-disclosed studies on narrow cross-engine overlap (Indig
+  Consensus Gap 91.07% single-engine on 3.7M citations EU-weighted;
+  SISTRIX Jaccard 0.17 between AIO + AI Mode on 1.55M snapshots × 17
+  weeks × 6 countries; arXiv:2510.11560 4,606-query peer-publishable).
+  Plus the Nature Communications 2025 finding that <10 distinct URLs
+  cover 80% of LLM responses per query — strategic implication for
+  entity-hub (check 5) + backlink (check 10) emphasis.
+
+  **Mandatory caveats in doc:** Indig is EU-weighted (Spain + UK +
+  Nordics) so US-market magnitude generalization unproven; no public
+  study covers ChatGPT + Claude + Gemini + Perplexity + AIO + AI Mode +
+  Copilot simultaneously, so any "AI engines do X" claim should be
+  checked against engine-coverage of its evidence source.
+
+- **`scripts/check-live-apex.py`** module docstring updated to
+  reflect 12 phases (A-J default; K + L opt-in).
+
+- **`templates/.launch-readiness.yml.example`** gains `multi_ua_probe`
+  opt-in configuration block.
+
+- **`SKILL.md`** version bumped 1.5.0 → 1.5.1.
+
+- **`README.md`** Status line updated.
+
+### Phase A interaction (v1.5.0 + v1.5.1 together)
+
+State-file substrate from v1.5.0 now has 5 new finding-types to track
+across passes:
+
+- `2.4.schema_text_parity` (existing, finding text strengthened)
+- `7.5.substantive_delta` (existing, finding text strengthened)
+- `9.10.front_loading` (**new**)
+- `11.L.ai_bot_blocked` / `11.L.ai_bot_shrunk` / `11.L.multi_ua_clean` (**new**)
+
+Cross-pass behavior in self-analyze: consumers will see operator-action
+rate on these new findings on subsequent passes. For example, if a
+consumer fixes their figcaption density (drops from `14.figcaption_sparse`
+WARN to `14.figcaption_dense` PASS) AND simultaneously front-loads their
+content (drops from `9.10.front_loading` WARN to PASS), the next pass
+will surface both as "Resolved" in the operator-action section. This is
+the measurement layer ADR 0002 ratified.
+
+### Verification provenance (audit trail)
+
+v1.5.1 candidates traveled through the full ADR 0001 two-reflex
+discipline:
+
+- **Discovery:** 7 parallel subagents across 8 corpora (academic
+  primary, first-party platform docs, conference talks, practitioner
+  LinkedIn long-form, newsletter back-issues, practitioner subreddits,
+  GitHub awesome-lists + YouTube transcripts). ~7 min wall-clock.
+- **Steelman:** 4 parallel subagents finding verbatim primary evidence
+  for the top 7 hypotheses. ~5 min wall-clock.
+- **Verification:** 4 parallel subagents attacking each steelman finding,
+  re-fetching source URLs, applying folklore patterns 1-4.
+
+Verification killed 5 findings, demoted 12, promoted 16. Three number-
+drift errors caught at steelman→verification handoff. One hypothesis
+(programmatic-GEO posture check / H8) killed entirely on inverse
+evidence (format-templating studies show templated content is cited
+MORE not less; NationalToday case coincides with Google manual action
+not templating per se).
+
+### Migration notes for v1.5.0 consumers
+
+No breaking changes. Existing audit-output finding semantics unchanged.
+New findings (`9.10.front_loading`, `11.L.*`) appear in audit output
+on first v1.5.1 run.
+
+Check 11.L requires `multi_ua_probe: true` opt-in. When unset (default):
+no new network calls; phase L is silently skipped.
+
+Check 9.10 runs automatically when content directory + ≥60-word pieces
+exist. No new config required.
+
 ## [1.5.0] — 2026-05-20
 
 Phase A of ADR 0002 ships. The skill is no longer pure-function:
