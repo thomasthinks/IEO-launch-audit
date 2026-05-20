@@ -3,6 +3,52 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.3.1] — 2026-05-20
+
+Rule-correctness patch. The offline curated-rules catalog
+(`references/schema-org-rules.json`) had `mainEntity` typed as `object`,
+which fires `2.9.value_types` FAIL against any well-formed `FAQPage`
+(canonical shape: array of `Question` objects). Relaxed to
+`object-or-array`. Surfaced by a consumer audit run against an FAQ-emitting
+site (rule 2.9 firing FAIL on 5 nodes that were structurally correct).
+
+### Fixed
+
+- **`references/schema-org-rules.json` — `mainEntity` value-type
+  loosened from `"object"` to `"object-or-array"`.** Google's documented
+  `FAQPage` JSON-LD example uses `mainEntity: [Question, Question, ...]`
+  (see [developers.google.com/search/docs/appearance/structured-data/faqpage](https://developers.google.com/search/docs/appearance/structured-data/faqpage)).
+  Schema.org itself does not constrain `mainEntity` cardinality — the
+  range is just `Thing` ([schema.org/mainEntity](https://schema.org/mainEntity))
+  — so the prior `object`-only rule was stricter than the spec. Rules file
+  `version` field bumped `2026-05d` → `2026-05e` to make the catalog drift
+  detectable.
+
+### Tradeoff (intentional, low-risk)
+
+The relaxation is global — `ProfilePage.mainEntity` (canonically a single
+`Person`) and `CollectionPage.mainEntity` (canonically a single `ItemList`)
+will no longer trip `2.9.value_types` if accidentally emitted as arrays.
+Accepted because:
+
+- The dedicated CollectionPage shape check (`scripts/check-schema.py:907-908`)
+  independently enforces `dict + @type == ItemList`, so CollectionPage's
+  strict-singular convention is still validated — just by the dedicated rule
+  rather than the generic value-type rule.
+- `type_required_props` still flags `mainEntity` *absence* on ProfilePage /
+  CollectionPage. Only the value-shape changes.
+- The strictly-correct alternative is per-parent-type overrides (`FAQPage`
+  → array-of-`Question`; `ProfilePage` → single `Person`;
+  `CollectionPage` → single `ItemList`). More code + more rules to maintain.
+  Deferred to a future patch only if a real consumer regression surfaces.
+
+### Migration notes for v1.3.0 consumers
+
+No breaking changes. No invocation changes. Consumers re-running the audit
+should see `2.9.value_types` PASS on previously-failing `FAQPage` nodes.
+Other `mainEntity` users (ProfilePage, CollectionPage, WebPage, ItemPage)
+unaffected when emitting the canonical single-object shape.
+
 ## [1.3.0] — 2026-05-15
 
 The Phase-2-verified candidate slate ships. Seven new findings across six existing checks + one new check (check 13). Driven by the recursive-research arc that ran across v1.2.1: five discovery + six verification subagents validated each candidate against primary sources before promotion. Local-validated against `thomasjankowski-site`; the schema-parity finding surfaces a real WARN (71% of JSON-LD string fields not in DOM, 22 unique missing strings).

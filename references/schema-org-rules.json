@@ -1,6 +1,6 @@
 {
   "_comment": "Curated Schema.org type+property rules for IEO-launch-audit check 02 v0.5 (expanded v0.9, long-tail Article subtypes added v1.1, retired rich-results documented v1.2.1). NOT exhaustive vs schema.org/version/latest; covers the types this skill audits: Article (+ 15 subtypes: NewsArticle, BlogPosting, ScholarlyArticle, TechArticle, Report, AdvertiserContentArticle, OpinionNewsArticle, SatiricalArticle, BackgroundNewsArticle, AnalysisNewsArticle, AskPublicNewsArticle, ReportageNewsArticle, ReviewNewsArticle, SocialMediaPosting, DiscussionForumPosting — all inherit Article's required-property set), Person, Organization, WebSite, WebPage, BreadcrumbList, CollectionPage, ProfilePage, ImageObject, ItemList, ListItem, DefinedTerm, SpeakableSpecification, Occupation. Source: schema.org core vocabulary release notes through 2026-05. Update version field on each refresh so out-of-date drift is detectable.",
-  "version": "2026-05d",
+  "version": "2026-05e",
   "schema_org_version": "30.0",
   "_rich_result_retired_2026_01": {
     "purpose": "Google retired rich-result display for 7 schema types in January 2026. The types remain VALID schema.org vocabulary (still parsed for entity understanding + AI engine extraction) — only the SERP rich-result UI is gone. If the consumer is emitting these types expecting rich-result eligibility, the audit should advise the type is parsed but not visually rendered.",
@@ -95,7 +95,7 @@
     "author": "object-or-array",
     "publisher": "object",
     "mainEntityOfPage": "URL-or-object",
-    "mainEntity": "object",
+    "mainEntity": "object-or-array",
     "isPartOf": "object-or-array",
     "hasPart": "object-or-array",
     "about": "object-or-array",

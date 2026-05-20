@@ -3,7 +3,7 @@ name: IEO-launch-audit
 description: Pre-launch + post-launch SEO / IEO / GEO audit for a static or SSG site. Audits 13 categories (technical SEO, Schema.org graph, AI-bot directives, Core Web Vitals, Wikidata entity graph, IndexNow, sitemap accuracy, internal-link quality, content tactics, external backlinks, live-apex behavior, Search Console cross-verification, imagery provenance) and reports gaps with concrete fixes. Designed to catch what external audits (Screaming Frog, Sitebulb, Lighthouse, Schema Markup Validator, Google Rich Results Test, AI-citation trackers) will flag, before they flag it. Pre-launch use: run before pointing the apex domain at a build. Post-launch use: opt-in checks 11 (live-apex) + 12 (Bing API + GSC snapshot) + 13 (AI-imagery XMP) verify behavior + indexing-state + provenance the source-side checks can't see. Use when launching a content site, when running readiness checks on someone else's site, or as a recurring health check post-launch.
 metadata:
   priority: 7
-  version: 1.3.0
+  version: 1.3.1
   docs:
     - "https://developers.google.com/search/docs/fundamentals/seo-starter-guide"
     - "https://schema.org/Article"
