@@ -3,6 +3,108 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.6.0] — 2026-05-20
+
+Phase C of ADR 0002 ships. The skill now has a routine for monthly
+auto-research: a Claude Code session invoked via `/schedule` reads
+`scripts/research/PROTOCOL.md`, dispatches the two-reflex discipline
+(discovery → steelman → verification) per ADR 0001, consolidates
+findings, and opens a PR for maintainer review. **Activation is
+operator-side** — the routine is ready; configure `/schedule` when
+ready to start the monthly cadence.
+
+### Added
+
+- **`scripts/research/PROTOCOL.md`** — execution guide for a Claude
+  Code session running the auto-research pass. ~250 lines covering:
+  - **Preconditions** (clone + cwd, Agent tool surface, gh CLI).
+  - **Branch setup** (`auto-research/YYYY-MM` from main).
+  - **Discovery wave** — 5-7 parallel subagents across the 8 corpora
+    mandated by ADR 0001 (academic primary, first-party platform,
+    conference talks, practitioner LinkedIn, newsletters, subreddits,
+    GitHub awesome-lists + YouTube). 60-100 tool uses each.
+  - **Steelman wave** — 3-5 parallel subagents finding verbatim
+    evidence FOR top hypotheses. Opposite incentive structure to
+    verification.
+  - **Verification wave** — 3-5 parallel subagents attacking findings.
+    PROMOTE / DEMOTE / KILL disposition; target distribution
+    4-7 / 1-3 / 0-2.
+  - **Consolidation** → `references/research-YYYY-MM.md`.
+  - **Ship** via `auto-pass.sh ship YYYY-MM`.
+  - **Error handling** — `.last-pass-error.md` marker; PR opens with
+    `[FAILED]` prefix when errors occur.
+  - **Idempotency + skip conditions** — one PR per month max; skip
+    when prior PR open OR error marker exists OR <14 days remain.
+  - **Calibration triggers** for the maintainer — testable signals
+    that flip cadence to quarterly OR tighten subagent budgets OR
+    add a meta-verification pass.
+
+- **`scripts/research/auto-pass.sh`** — git + gh ship mechanics
+  (~120 LoC stdlib bash). Two subcommands:
+  - `init [YYYY-MM]`: verifies no prior PR open, sets up
+    `auto-research/YYYY-MM` branch from `origin/main`.
+  - `ship YYYY-MM`: stages research artifacts, commits with
+    conventional-commits prefix, pushes branch, opens PR via `gh`
+    with a maintainer-review-required body. Degrades gracefully when
+    `gh` is absent (commits + pushes + writes manual-PR-creation note).
+
+- **`scripts/research/README.md`** — usage doc + scheduled-cadence
+  configuration example for Claude Code `/schedule`.
+
+### Architecture invariants preserved
+
+Per ADR 0001 + ADR 0002, the routine **never**:
+
+- Merges PRs (maintainer reviews + decides every candidate).
+- Mutates skill checks directly (only writes research artifacts +
+  opens a PR).
+- Mutates consumer state files (per-repo `.ieo-audit-state.yml` is
+  consumer-side; out of auto-research scope).
+- Updates maintainer memory automatically (memory updates are
+  PR-suggested via PR body, not auto-applied).
+
+### What this enables
+
+With Phase A + B + C all shipped, the skill's self-improving loop is
+complete in its minimum-viable form:
+
+1. **Consumer-side measurement** (Phase A): `.ieo-audit-state.yml`
+   tracks operator action across passes.
+2. **Outcome correlation** (Phase B): indexing-state delta from
+   check 12 paired with operator action, medium-confidence framing.
+3. **Maintainer-side knowledge refresh** (Phase C): monthly
+   auto-research PR surfaces new candidates under the two-reflex
+   discipline; maintainer ratifies.
+
+**Phase D (cross-repo auto-learn)** remains deferred to v1.7+ — needs
+multi-repo state aggregation + opt-in privacy gating.
+
+### Changed
+
+- **`SKILL.md`** version bumped 1.5.2 → 1.6.0 (minor — new feature
+  surface).
+- **`README.md`** Status line updated.
+
+### Migration notes for v1.5.x consumers
+
+No breaking changes. No new config required for consumer-side audit
+runs. Phase C ships only the maintainer-side research-routine scripts;
+consumer-side audit behavior is unchanged.
+
+To activate the monthly cadence:
+
+```
+/schedule monthly-on-1st 09:00 "Run the IEO-launch-audit auto-research pass per scripts/research/PROTOCOL.md against github.com/thomasthinks/IEO-launch-audit"
+```
+
+When activated, expect:
+- 1 PR per month (auto-opened, maintainer-reviewed).
+- ~$50-90/month operational cost in Claude credits.
+- ~60-100min wall-clock per pass (parallel subagent dispatch).
+- Calibration after 3 passes: if zero novel candidates surface 3x
+  consecutive, drop to quarterly per ADR 0002 Decision 4's testable
+  trigger.
+
 ## [1.5.2] — 2026-05-20
 
 Phase B of ADR 0002 ships. The skill now pairs its primary measurement
