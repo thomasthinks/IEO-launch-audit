@@ -6,7 +6,7 @@ auditors (Screaming Frog, Sitebulb, Ahrefs, Lighthouse, Schema Markup
 Validator, Google Rich Results Test) will flag, plus the LLM-citation-side
 gaps the SEO tool ecosystem still under-covers.
 
-**Status:** 1.4.2 (14 checks; v1.4 adds opt-in check 14 — multimodal markup (figcaption + alt-text + HTML tables); plus framing patches surfaced by 2026-GEO recursive-research pass. v1.4.1 amends ADR 0001 with the steelman reflex paired with verification. v1.4.2 ratifies ADR 0002 — self-improving skill architecture defining state-file substrate, audit-diff persistence as primary measurement signal, advisory-only auto-learn output, and monthly auto-research scheduling. Phase A implementation lands in v1.5). v1.3 ships seven
+**Status:** 1.5.0 (14 checks + Phase A self-improving substrate). v1.5.0 ships Phase A of ADR 0002: state-file substrate (`.ieo-audit-state.yml` at consumer repo root) + `self-analyze` pass that categorizes findings as new / resolved / persistent / regressed / long-running across passes + appends "Operator action since last pass" section to the audit report. First-pass behavior emits an advisory and writes a fresh state file for the consumer to commit. Stdlib-only YAML round-trip when PyYAML absent. The candidate slate from the v1.4.1 deep research pass (schema-text parity strengthening, cross-engine portfolio in check 12, first-30% positional check, freshness substantive-edit detection, multi-UA live-apex probe) lands in v1.5.1 atop Phase A. v1.3 ships seven
 new findings from the second-pass recursive research: schema↔visible-text
 parity (Google policy backstop; SearchVIU + Duck Test 2026 verified),
 @graph consolidation INFO (NLWeb-readiness; advisory), `about` vs

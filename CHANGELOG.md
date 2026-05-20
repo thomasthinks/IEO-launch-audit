@@ -3,6 +3,120 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.5.0] — 2026-05-20
+
+Phase A of ADR 0002 ships. The skill is no longer pure-function:
+`.ieo-audit-state.yml` lives in the consumer repo at root, written by
+the audit at end of each pass, read at start of the next pass, and used
+to categorize how findings shifted between passes. This is the
+measurement substrate that future v1.5.x candidates (the slate from
+v1.4.1's deep research) need to surface their effect on consumers.
+
+The v1.4 candidate slate (schema-text parity strengthening, cross-engine
+portfolio in check 12, first-30% positional check, freshness substantive-
+edit detection, multi-UA live-apex probe) does NOT ship in v1.5.0 — it
+ships in v1.5.1 once Phase A has settled. Rationale: the state-file
+substrate is load-bearing for measuring whether new checks actually help;
+shipping checks without state means no signal for whether they helped.
+
+### Added
+
+- **`scripts/_state.py`** — state-file substrate module (~260 LoC stdlib).
+  - `StateFinding` + `State` dataclasses capturing finding identity +
+    severity + first-seen / last-seen / pass-count.
+  - `load_state(repo)` — reads `.ieo-audit-state.yml` from repo root.
+    Tolerant of state-version mismatch (newer state from future skill
+    version → treats as absent rather than corrupting).
+  - `write_state(repo, state)` — atomic write (tmp file + rename) to
+    repo root.
+  - `build_state_from_results(skill_version, results, prior)` — merges
+    current-pass results with prior state, preserving `first_seen` and
+    incrementing `pass_count` where findings persist.
+  - **Stdlib-only YAML fallback.** Emitter + parser handle the
+    state-file shape when PyYAML is not importable. Round-trip tested.
+
+- **`scripts/self-analyze.py`** — self-analyze pass orchestrator (~210
+  LoC stdlib). Runs after the main audit. Reads `.ieo-audit-state.yml`,
+  compares current-pass findings against prior:
+  - **Resolved** — was WARN/FAIL, now PASS or dropped out
+  - **Regressed** — was PASS, now WARN/FAIL
+  - **Persistent** — WARN/FAIL in both passes
+  - **New** — WARN/FAIL in current pass, absent in prior
+  - **Long-running** — persistent findings open ≥3 passes
+  Appends an "Operator action since last pass" section to the audit
+  report (`.launch-readiness-report.md`). Writes a fresh state file
+  at end. First-pass behavior (state file absent): emits advisory
+  + writes initial state file for consumer to commit.
+
+- **`docs/decisions/0002-self-improving-skill.md`** (ratified in v1.4.2;
+  Phase A operationalizes Decision 1 — audit-diff persistence as
+  primary measurement signal — and Decision 2 — state in consumer
+  repo, committed by operator).
+
+### Changed
+
+- **`scripts/audit.sh`** — registers self-analyze invocation after the
+  main audit loop. Self-analyze runs unconditionally (no config gate
+  yet — opt-out via removing the block; gate to be added if a real
+  need surfaces). Errors degrade gracefully (self-analyze never blocks
+  the audit).
+
+- **`SKILL.md`** — version bumped to 1.5.0.
+
+- **`README.md`** — Status line updated; mentions state file behavior.
+
+### First-pass behavior for v1.4.x consumers upgrading to v1.5.0
+
+When a v1.4.x consumer first runs v1.5.0:
+
+1. Audit runs as usual; emits the usual MD + JSON reports.
+2. Self-analyze runs at end. Detects no prior state file.
+3. Writes `.ieo-audit-state.yml` to repo root with current findings.
+4. Appends "First pass — no prior state file found" section to the
+   audit report. Advises the operator to commit the state file.
+
+Operator commits the state file. Next pass produces the full
+"Operator action since last pass" section.
+
+### Migration notes for v1.4.x consumers
+
+No breaking changes to audit-output finding semantics. One new file at
+first invocation: `.ieo-audit-state.yml` at repo root. **Soft-required
+commit**; not gating but visible in audit output as advisory.
+
+If you want to disable state tracking entirely, remove the self-analyze
+invocation block from `scripts/audit.sh` (the skill is symlinked from
+`~/.claude/skills/IEO-launch-audit/` so the edit is local to your install).
+A proper `state_tracking: false` config gate may land in v1.5.x if a
+real need surfaces; for now, the default-on behavior is what the ADR
+ratified.
+
+### Phase A budget impact
+
+Audit-budget impact is negligible — `self-analyze.py` adds ~50-200ms
+per pass for typical finding counts (10-100 findings). No new network
+calls. Stdlib only. Phase A does NOT add to the "~5 minutes for checks
+1-10 fast pass" budget.
+
+State file size grows logarithmically with audit history. Expected
+<10KB per audit pass after stabilization (state captures one record
+per unique finding-id across audit history; PASS findings are also
+retained to track resolution events).
+
+### Known gaps in Phase A (deferred to Phase B / v1.5.x+)
+
+- **GSC / Bing delta integration in self-analyze.** Check 12 already
+  has API surfaces; pairing them with state-file persistence to track
+  indexing-state delta correlated with finding-resolution is Phase B.
+- **Wayback CDX substantive-edit confirmation.** Pair self-analyze's
+  "resolved" findings with content-digest evidence that the underlying
+  content actually changed (not just metadata).
+- **Operator-action tracking via commit-message mining.** Currently
+  the skill infers operator action from finding-severity delta only.
+  Future work: detect commits matching fix patterns to attribute the
+  action.
+- **`auto-learn-report.md` cross-repo aggregation.** Phase D.
+
 ## [1.4.2] — 2026-05-20
 
 ADR-only patch. v1.4.1's deep research pass (under the new two-reflex

@@ -227,6 +227,21 @@ echo ""
 echo "Report:       $REPORT_MD"
 echo "JSON:         $REPORT_JSON"
 
+# Phase A self-analyze (v1.5+, ADR 0002).
+# Reads `.ieo-audit-state.yml` from repo root, compares current findings
+# against prior pass, appends "Operator action since last pass" section to
+# the MD report, writes updated state file. Self-analyze checks its own
+# config gate (state_tracking: false to disable; default on). Read-only
+# when state file absent (first-pass behavior). Never blocks the audit;
+# errors degrade gracefully.
+if python3 "$SKILL_DIR/scripts/self-analyze.py" \
+    --repo "$REPO" \
+    --report-json "$REPORT_JSON" \
+    --report-md "$REPORT_MD" \
+    --skill-version "$SKILL_VERSION" 2>&1 | sed 's/^/[self-analyze] /'; then
+  : # success path; self-analyze prints its own status on stderr
+fi
+
 # Incremental diff against prior snapshot (auto-rotated above) or an
 # operator-supplied snapshot path.
 if [[ $DIFF -eq 1 ]]; then
