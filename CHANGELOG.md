@@ -3,6 +3,78 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.6.1] — 2026-05-20
+
+Operator UX patch. v1.5.0 shipped Phase A's `.ieo-audit-state.yml`
+substrate, but operators had no way to inspect it outside an audit
+run. v1.6.1 closes that gap with a small read-only CLI.
+
+### Added
+
+- **`scripts/inspect-state.py`** (~180 LoC stdlib). Reads
+  `.ieo-audit-state.yml` from a repo and presents a human-readable
+  summary:
+  - Skill version + last pass date with relative-age formatting
+    ("now", "5 weeks ago", "3 months ago").
+  - Findings broken down by severity (FAIL / WARN / MANUAL_VERIFY /
+    INFO / PASS / NOT_APPLICABLE) with warning markers on
+    problem-tier counts.
+  - **Longest-open WARN/FAIL findings** sorted by `pass_count` desc
+    — surfaces what's been broken longest.
+  - First-seen + last-seen ages per finding.
+
+  **Flags:**
+  - `--repo PATH` — repo root (default: `.`)
+  - `--id REGEX` — filter findings by regex (e.g. `^14\.` for all
+    check-14 findings)
+  - `--long-open N` — number of longest-open findings to show
+    (default: 10)
+  - `--limit N` — max findings under `--id` filter (default: 20)
+  - `--json` — emit raw state as JSON (pipe-friendly for `jq` etc.)
+
+  **Usage examples:**
+
+  ```bash
+  python3 scripts/inspect-state.py                       # summary
+  python3 scripts/inspect-state.py --long-open 5         # top 5 stuck findings
+  python3 scripts/inspect-state.py --id '14\.'           # all check-14 findings
+  python3 scripts/inspect-state.py --json | jq '.findings[] | select(.pass_count >= 3)'
+  ```
+
+  **Read-only — never modifies state.** Returns non-zero exit code
+  when state file absent (operator can chain with shell logic).
+
+### Why this matters
+
+Phase A's state file is committable by the operator (per ADR 0002
+Decision 2), but until v1.6.1 the only way to read it was via the
+audit-report MD output or by reading raw YAML. `inspect-state.py`
+gives operators day-to-day visibility into:
+
+- "What findings have been open longest?" — by pass_count desc.
+- "What changed since I last looked?" — last-seen vs first-seen.
+- "Show me everything for check N" — `--id` regex.
+- "Pipe state to my own analysis" — `--json`.
+
+This is operator-UX scaffolding, not new audit logic. No new findings
+emitted; no new checks run; no new state schema.
+
+### Changed
+
+- **`SKILL.md`** version bumped 1.6.0 → 1.6.1.
+- **`README.md`** Status line updated.
+
+### Migration notes
+
+No breaking changes. No new config required. Existing audit behavior
+unchanged. `inspect-state.py` is purely additive.
+
+Smoke-tested end-to-end against a populated state file with 6
+findings spanning FAIL / WARN / INFO / PASS severities + varied
+pass_counts (1-8) + varied first-seen ages (now to 3 months ago).
+Output rendered cleanly for default summary, `--id` filter, and
+`--json` modes.
+
 ## [1.6.0] — 2026-05-20
 
 Phase C of ADR 0002 ships. The skill now has a routine for monthly
