@@ -3,6 +3,70 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.4.2] — 2026-05-20
+
+ADR-only patch. v1.4.1's deep research pass (under the new two-reflex
+discipline) closed with 5 firm + 2 conditional v1.5 candidates surviving
+steelman + verification. Discovery surfaced an architectural gap orthogonal
+to the candidate slate: the skill has no way to measure whether emitted
+findings move outcomes, no per-repo memory, no mechanism to evolve from
+real consumer experience. v1.4.2 ratifies the architecture that closes
+that gap.
+
+### Added
+
+- **`docs/decisions/0002-self-improving-skill.md` — ADR 0002.** Ratifies
+  four load-bearing decisions:
+  1. **Primary measurement signal: audit-diff persistence across passes.**
+     GSC/Bing deltas are companion signals reported at confidence-tier
+     "medium" at best (attribution noise unresolvable). LLM citation
+     tracking is too noisy to be load-bearing.
+  2. **State location: consumer repo, committed, version-controlled.**
+     `.ieo-audit-state.yml` at repo root. Operator commits; subsequent
+     audits read. Git-log fallback when absent.
+  3. **Auto-learn output: advisory-only, never auto-mutating.** Skill
+     emits `auto-learn-report.md`; maintainer reviews and decides whether
+     to mutate via normal PR review. Reasoning: drift toward consumer-bias
+     is the failure mode of auto-mutation. Same discipline pattern as
+     ADR 0001's verification-subagent reflex.
+  4. **Auto-research scheduled monthly, opens PR, never auto-merges.**
+     `scripts/research/auto-pass.sh` + scheduled remote agent. Runs under
+     ADR 0001's two-reflex discipline. ~$50-90/month operational cost.
+
+  **Phased rollout:**
+  - **Phase A (v1.5):** state-file substrate + self-analyze pass +
+    audit-report integration + git-log fallback. Substantial release.
+  - **Phase B (v1.5.x or v1.6):** GSC/Bing delta integration in
+    self-analyze.
+  - **Phase C (v1.6):** auto-research routine + scheduled remote agent.
+  - **Phase D (v1.7+):** cross-repo auto-learn (opt-in only).
+
+### Why this lands as a patch, not a release with code
+
+Doc-only architectural ratification. The ADR captures decisions the
+maintainer has explicitly agreed to but the implementation is substantial
+enough to warrant its own release (v1.5). Shipping the ADR separately as
+v1.4.2 keeps the contract immutable while Phase A code lands; reviewers
+of the v1.5 PR have a clear reference document.
+
+### Why v1.5 instead of v1.4.3 for Phase A
+
+Phase A is a load-bearing architectural shift (pure-function → lightly-
+stateful) that bundles with the v1.5 candidate slate from the deep
+research pass. Bundling makes the package coherent: new checks land
+alongside the per-repo memory that lets future passes measure their
+effect. Shipping checks without state means no signal for whether they
+helped; shipping state without checks means nothing to measure.
+
+### Migration notes for v1.4.1 consumers
+
+No code changes; no audit-output changes; no breaking changes. The
+amendment affects future architecture, not current behavior.
+
+When v1.5 ships (with Phase A code), v1.4.x consumers will see one new
+file at first invocation: `.ieo-audit-state.yml` at repo root. Soft-
+required commit; not gating but visible in audit output.
+
 ## [1.4.1] — 2026-05-20
 
 ADR-only patch. The v1.4 GEO/pGEO research pass surfaced a structural
