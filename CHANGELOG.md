@@ -3,6 +3,88 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.3.2] — 2026-05-20
+
+Dogfooding patch. v1.3 shipped ADR 0001 ("claim-verification reflex") to
+catch folklore-emission patterns in third-party SEO discourse — and then
+shipped a check that violates the ADR. A recursive 2026-GEO-pattern
+research pass (run during v1.4 candidate evaluation) caught the self-
+violation: `checks/09-content-tactics.md` preamble quoted Aggarwal et al.
+(KDD 2024) as point estimates (`+30%`, `+35%`, `+37%`) — bound-smoothed
+from the paper's published 30-40% / 15-30% ranges, with the per-rank-
+bucket caveat omitted (rank-1 deltas in the paper are actually
+*negative* for these tactics; rank-5 deltas exceed +100%, paper Table 2).
+Two additional numbers (`Q&A blocks +40%` and `First-party data +30-40%`,
+attributed to Profound) had no traceable per-tactic methodology. A fourth
+(`Semantic completeness 340% inclusion rate vs shallow pages`) had no
+source citation at all (verified by grep).
+
+This patch fixes the self-violation and adds ADR 0001 pattern 4
+("vendor-published weight percentages for closed-source ranking
+algorithms"), verified-by-absence across Anthropic / OpenAI / Perplexity /
+Google's canonical docs (none publishes source-selection weights).
+
+### Fixed
+
+- **`checks/09-content-tactics.md` preamble** rewritten to quote
+  Aggarwal et al.'s actual published ranges (**30-40%** on Position-
+  Adjusted Word Count, **15-30%** on Subjective Impression — paper §4)
+  and to surface the rank-bucket caveat from Table 2: Cite Sources is
+  **−30.3% at rank-1** → **+115.1% at rank-5**; Quotation Addition
+  **−22.9% → +99.7%**; Statistics Addition **−20.6% → +97.9%**. **GEO
+  tactics disproportionately help low-ranked sources and may hurt
+  already-rank-1 sources** — a strategic implication the prior framing
+  omitted. Methodology context added (10K-query GEO-bench, 5 random
+  seeds, Perplexity.ai real-world validation, GPT-3.5 G-Eval for
+  Subjective Impression).
+- **Removed unverified Profound per-tactic percentages** (`Q&A blocks
+  +40%`, `First-party data +30-40%`). Profound publishes citation-
+  pattern observations and aggregate readouts; their published material
+  does not include per-tactic delta methodology. The tactics themselves
+  remain in the check's recommendation list as practitioner-consensus
+  advice (sections 9.5, 9.6); only the false-precision percentages are
+  dropped from the preamble.
+- **Removed `Semantic completeness ≥8.5/10: 340% inclusion rate vs
+  shallow pages`** — no source citation in the file (verified by grep
+  across `checks/`, `references/`, `scripts/`).
+- **Tightened the "cited sources" attribution** at the preamble foot:
+  methodology-disclosed sources (Aggarwal et al.) separated from
+  pattern-observation sources (Profound, ALM Corp, SEJ, SEL) so future
+  edits don't conflate the two tiers.
+
+### Added
+
+- **ADR 0001 pattern 4 — "Vendor-published weight percentages for
+  closed-source ranking algorithms."** Verified-by-absence (May 2026):
+  direct fetches of [Anthropic's `web_search` tool
+  docs](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool),
+  [OpenAI's ChatGPT Search
+  help](https://help.openai.com/en/articles/9237897-chatgpt-search),
+  [Perplexity's publisher program](https://www.perplexity.ai/hub),
+  and [Google's AI optimization
+  guide](https://developers.google.com/search/docs/fundamentals/ai-optimization-guide)
+  confirm that none of the four publishes source-selection weights. Any
+  "Claude weights entity 30%" / "ChatGPT weights authority 40%" /
+  "Perplexity weighs recency 20%" claims circulating in vendor blogs are
+  fabricated. The engines explicitly do not publish this information —
+  that is policy, not oversight, and unlikely to change.
+- **ADR 0001 context item 4** documents this v1.3.2 dogfooding pass as
+  the originating evidence for pattern 4. The ADR's status line is
+  amended (not superseded) — pattern 4 was identified via the same
+  verification-subagent dispatch the ADR ratifies.
+
+### Migration notes for v1.3.1 consumers
+
+No breaking changes. No invocation changes. Existing audit outputs are
+unchanged in finding-count / finding-shape; only the *preamble framing*
+of check 09 is rewritten. Consumer-side audit reports will show the
+corrected narrative on the next run.
+
+If a consumer's editorial team has been citing the prior check-9
+percentages in their own briefs / dashboards, those briefs should be
+updated. The corrected framing is "30-40% range, but rank-1 deltas can
+be negative" — not "+30 / +35 / +37%."
+
 ## [1.3.1] — 2026-05-20
 
 Rule-correctness patch. The offline curated-rules catalog

@@ -1,6 +1,6 @@
 # ADR 0001 — Claim-verification reflex for new check candidates
 
-**Status:** Accepted (v1.3, 2026-05-15)
+**Status:** Accepted (v1.3, 2026-05-15; pattern 4 added v1.3.2, 2026-05-20)
 **Context:** Two research passes against 2026 SEO/IEO/GEO discourse
 **Decision:** Every candidate sourced from third-party SEO discourse goes
 through a verification-subagent pass before promotion into the skill's
@@ -40,11 +40,23 @@ Across two research passes (May 2026), the same failure pattern repeated:
    promoting an SEO content service). The "13-week recency cliff" turned
    out to trace to one source (Amsive) smoothed across vendor blogs into
    "consensus."
+4. **The v1.3.2 dogfooding pass** (May 2026) surfaced a self-violation:
+   `checks/09-content-tactics.md` had quoted Aggarwal et al. (KDD 2024)
+   as point estimates (`+30%`, `+35%`, `+37%`) — bound-smoothed from the
+   paper's published 30-40% / 15-30% ranges, with the per-rank-bucket
+   caveat omitted entirely (rank-1 deltas in the paper are actually
+   *negative* for these tactics; rank-5 deltas exceed +100%). Two other
+   numbers in the same file (`Q&A blocks +40%`, `First-party data
+   +30-40%`, both attributed to Profound) had no traceable methodology
+   source. A fourth (`Semantic completeness 340% inclusion rate`) had
+   no source citation at all. Fixed in v1.3.2; the dogfooding pattern
+   becomes pattern 4 below.
 
 These are not one-offs. They are the **emission pattern of the SEO
-content-marketing ecosystem in 2026**.
+content-marketing ecosystem in 2026** — and the skill is not immune to
+emitting them when sourcing from that ecosystem.
 
-## Three failure-pattern signatures
+## Four failure-pattern signatures
 
 Calibrating institutional pattern-recognition so future research passes
 catch these earlier:
@@ -95,6 +107,36 @@ Examples seen:
 out to drift by 50%+ across sources all claiming the same study, **no
 study exists**. The number was made up in one place; the rest is
 copy-paste.
+
+### Pattern 4 — Vendor-published weight percentages for closed-source ranking
+
+Specific percentage claims about how a closed-source LLM ranking
+algorithm weights factors, with no first-party source from the engine
+vendor.
+
+Examples seen:
+- "Claude weights entity verification 30% / technical accuracy 25% / ..."
+- "ChatGPT weights domain authority 40% / content 35% / trust 25%"
+- "Perplexity weighs recency at 20% in core update X"
+
+**Verified-by-absence (May 2026):** direct fetches of canonical docs
+confirm that none of Anthropic ([web_search tool
+docs](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool)),
+OpenAI ([ChatGPT Search
+help](https://help.openai.com/en/articles/9237897-chatgpt-search)),
+Perplexity ([publisher program](https://www.perplexity.ai/hub)), or
+Google ([AI optimization
+guide](https://developers.google.com/search/docs/fundamentals/ai-optimization-guide))
+publishes a source-selection algorithm or factor weights. Any such
+percentage circulating in vendor blogs is fabricated. (The engines
+explicitly do not publish this information — that is policy, not
+oversight, and unlikely to change.)
+
+**Verification reflex:** when a recommendation cites engine-specific
+ranking weights, demand the first-party URL from the engine vendor. If
+none exists, the percentage is folklore. Distinguish this from
+mechanism-claims that ARE publishable ("Claude uses dynamic filtering"
+is verifiable; "Claude weights aggregators 25% less" is not).
 
 ## The verification-subagent reflex
 

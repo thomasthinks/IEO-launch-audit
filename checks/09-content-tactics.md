@@ -3,28 +3,50 @@
 ## Why this matters
 
 Princeton/Georgia Tech (Aggarwal et al., KDD 2024) measured 9 content
-tactics for GEO effect on LLM visibility:
-- Cite Sources: +30%
-- Quotations: +35%
-- Statistics: +37%
-- Q&A formatting blocks: +40% (Profound 2026)
-- First-party data / original research: +30-40% (Profound 2026)
-- Semantic completeness ≥8.5/10: 340% inclusion rate vs shallow pages
+tactics for GEO effect on LLM visibility, using a 10K-query benchmark
+(ELI5 + GPT-4-synthesized queries across 9 source domains), 5 random
+seeds per condition, real-world validation against Perplexity.ai, and
+Subjective Impression scored via GPT-3.5 G-Eval. Headline findings
+(paper §4, verbatim):
 
-The effect sizes are vendor-published or single-paper (not peer-reviewed
-meta-analyses). Treat as direction, not gospel. But the consensus across
-SEJ / Search Engine Land / Aleyda Solis / Lily Ray / ALM Corp / Profound
-in 2025-2026 is consistent: pieces that DO these things get cited more
-than pieces that don't.
+- **Cite Sources, Quotation Addition, Statistics Addition** — top-
+  performing bucket. **+30 to +40%** on Position-Adjusted Word Count;
+  **+15 to +30%** on Subjective Impression (ranges averaged across
+  rank buckets).
+- **Fluency Optimization, Easy-to-Understand** — also **+15 to +30%**
+  visibility on the same metrics.
+- **Authoritative Tone** — no significant improvement.
+- **Keyword Stuffing** — little to no improvement.
+
+**Rank-bucket caveat (paper Table 2, load-bearing).** The Position-
+Adjusted Word Count deltas swing dramatically by rank bucket: Cite
+Sources is **−30.3% at rank-1** (already-cited sources can *lose*
+visibility adding more citations) and **+115.1% at rank-5**. Same
+pattern: Quotation Addition (−22.9% → +99.7%), Statistics Addition
+(−20.6% → +97.9%). **GEO tactics help low-ranked sources
+disproportionately and may hurt already-rank-1 sources.** This matters
+for consumer advice: a piece that's already heavily cited for its
+topic may not want to add more citation/quotation density — the
+intervention can be net-negative.
+
+Practitioner consensus across SEJ / Search Engine Land / Aleyda Solís /
+Lily Ray / Profound is directionally aligned with Aggarwal: pieces
+practicing these tactics get cited more than pieces that don't. Treat
+as direction-of-bias, not as predicted lift magnitudes for a specific
+page. Avoid quoting precise per-tactic percentages from vendor
+readouts — most vendor "X% lift from Y tactic" claims do not trace
+to a methodology document (see `docs/decisions/0001-claim-verification.md`).
 
 This check is **advisory**. Auto-fixing prose is out of scope (250 pieces
 × ~2K words is not auto-paraphraseable without voice degradation). It
 inventories what each piece does / doesn't do and surfaces a remediation
 recommendation list.
 
-**Cited sources:** Aggarwal et al. (KDD 2024); Profound's 2026 readouts;
-SEJ "Role of E-E-A-T in AI narratives"; Search Engine Land "Content
-strategy in 2026"; ALM Corp 325K-prompt LinkedIn study.
+**Cited sources (methodology-disclosed):** Aggarwal et al. (KDD 2024).
+**Cited sources (pattern-observation, no per-tactic methodology):**
+Profound's 2026 citation-pattern readouts; ALM Corp 325K-prompt LinkedIn
+study; SEJ "Role of E-E-A-T in AI narratives"; Search Engine Land
+"Content strategy in 2026."
 
 ## What's checked
 
