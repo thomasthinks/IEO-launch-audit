@@ -41,6 +41,139 @@ def _is_problem(severity: str) -> bool:
     return severity in PROBLEM_SEVERITIES
 
 
+# Phase B (v1.5.2): metric extraction from check 12 (GSC + Bing) findings.
+# These are COMPANION signals at confidence-tier "medium" at best per
+# ADR 0002 Decision 1. The skill reports correlation between operator
+# action (resolved findings) and indexing-state delta; it never claims
+# causation. Attribution noise is unresolvable (algo updates, seasonality,
+# other operator changes the skill didn't recommend).
+#
+# Extracted metrics, by finding ID:
+# - 12.bing.crawl_errors.current.crawl_errors_7d   (Bing crawl errors)
+# - 12.bing.crawl_errors.current.crawled_pages_7d  (Bing pages crawled)
+# - 12.bing.crawl_stats.current.crawled_pages_7d   (alt path when 0 errors)
+# - 12.bing.indexed_vs_sitemap.current.* (title fallback for indexed_count)
+# - 12.gsc.indexed_vs_sitemap.current.indexed      (GSC indexed URLs)
+# - 12.gsc.indexed_vs_sitemap.current.sitemap      (sitemap URL count)
+_PHASE_B_METRIC_PATHS = [
+    # (metric_id, finding_id, current_field, label)
+    ("bing.crawl_errors_7d", "12.bing.crawl_errors", "crawl_errors_7d",
+     "Bing crawl errors (last 7d)"),
+    ("bing.crawled_pages_7d", "12.bing.crawl_errors", "crawled_pages_7d",
+     "Bing pages crawled (last 7d)"),
+    ("bing.crawled_pages_7d", "12.bing.crawl_stats", "crawled_pages_7d",
+     "Bing pages crawled (last 7d)"),
+    ("gsc.indexed", "12.gsc.indexed_vs_sitemap", "indexed",
+     "GSC indexed URL count"),
+    ("gsc.sitemap", "12.gsc.indexed_vs_sitemap", "sitemap",
+     "Sitemap URL count (declared)"),
+]
+
+
+def extract_phase_b_metrics(results: list[dict]) -> dict[str, tuple[int, str]]:
+    """Extract Phase B metric values from check 12 findings.
+
+    Returns {metric_id: (value, label)}. Only includes metrics where the
+    finding-id is present AND the current field contains a numeric value.
+    """
+    finding_map: dict[str, dict] = {}
+    for check_result in results:
+        if not isinstance(check_result, dict):
+            continue
+        for f in check_result.get("findings", []) or []:
+            if not isinstance(f, dict):
+                continue
+            fid = f.get("id")
+            if not fid:
+                continue
+            finding_map[fid] = f
+
+    metrics: dict[str, tuple[int, str]] = {}
+    for metric_id, finding_id, field_name, label in _PHASE_B_METRIC_PATHS:
+        if metric_id in metrics:
+            continue  # already filled from an earlier finding_id in priority order
+        f = finding_map.get(finding_id)
+        if not f:
+            continue
+        current = f.get("current")
+        if not isinstance(current, dict):
+            continue
+        val = current.get(field_name)
+        try:
+            metrics[metric_id] = (int(val), label)
+        except (TypeError, ValueError):
+            continue
+    return metrics
+
+
+def _format_delta(current: int, prior: int) -> str:
+    delta = current - prior
+    if prior == 0:
+        if current == 0:
+            return "no change"
+        return f"+{delta} (was 0)"
+    pct = delta * 100 / prior
+    sign = "+" if delta >= 0 else ""
+    return f"{sign}{delta} ({sign}{pct:.1f}%)"
+
+
+def emit_phase_b_section(
+    current_metrics: dict[str, tuple[int, str]],
+    prior_results: list[dict] | None,
+    resolved_count: int,
+) -> str:
+    """Phase B audit-report subsection: indexing-state delta with
+    confidence-tier framing. Emits only when both current + prior metrics
+    are available."""
+    if not current_metrics or prior_results is None:
+        return ""
+    prior_metrics = extract_phase_b_metrics(prior_results)
+    overlap = set(current_metrics.keys()) & set(prior_metrics.keys())
+    if not overlap:
+        return ""
+
+    lines: list[str] = []
+    lines.append("")
+    lines.append("### Indexing-state context (Phase B, medium confidence)")
+    lines.append("")
+    lines.append(
+        "**Companion signals only.** Per ADR 0002 Decision 1, audit-diff "
+        "persistence (above) is the primary measurement; the deltas below "
+        "are reported at confidence-tier MEDIUM at best. Attribution noise "
+        "is unresolvable — indexing-state shifts could be operator action, "
+        "Google/Bing algorithm updates, seasonality, or other operator "
+        "changes the skill didn't recommend. Do not claim causation; read "
+        "as correlation only."
+    )
+    lines.append("")
+    lines.append("| Metric | Prior pass | Current pass | Delta |")
+    lines.append("|---|---|---|---|")
+    for metric_id in sorted(overlap):
+        cur_val, label = current_metrics[metric_id]
+        prior_val, _ = prior_metrics[metric_id]
+        lines.append(
+            f"| {label} | {prior_val} | {cur_val} | {_format_delta(cur_val, prior_val)} |"
+        )
+    lines.append("")
+
+    if resolved_count > 0:
+        lines.append(
+            f"_Context: {resolved_count} finding(s) marked resolved this pass. "
+            "Any positive indexing-state delta is **directionally consistent** "
+            "with operator action but cannot be causally attributed — "
+            "confounders unresolved. Negative deltas similarly may or may not "
+            "trace to skill recommendations._"
+        )
+    else:
+        lines.append(
+            "_No findings marked resolved this pass; indexing-state deltas "
+            "are independent of skill recommendations and reflect ambient "
+            "engine + content state._"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def categorize_findings(
     current_results: list[dict],
     prior: State | None,
@@ -252,10 +385,43 @@ def run(args) -> int:
 
     section = emit_report_section(categories, prior, new_state)
 
+    # Phase B (v1.5.2): indexing-state delta from check 12 (GSC + Bing).
+    # Read the prev report JSON (auto-rotated by audit.sh per v1.2's
+    # .prev.json substrate) and compute metric deltas. Companion signal
+    # only; medium-confidence framing mandatory.
+    prev_json_path = report_json_path.with_name(
+        report_json_path.stem + ".prev.json"
+    ) if not report_json_path.name.endswith(".prev.json") else None
+    # Standard auto-rotation: .launch-readiness-report.json →
+    # .launch-readiness-report.prev.json. Derive directly.
+    if prev_json_path is None or not prev_json_path.exists():
+        # Fallback: try the canonical sibling path.
+        candidate = report_json_path.parent / ".launch-readiness-report.prev.json"
+        if candidate.exists():
+            prev_json_path = candidate
+        else:
+            prev_json_path = None
+
+    prior_results: list[dict] | None = None
+    if prev_json_path and prev_json_path.exists():
+        try:
+            prior_results = json.loads(prev_json_path.read_text(encoding="utf-8"))
+            if not isinstance(prior_results, list):
+                prior_results = None
+        except (OSError, json.JSONDecodeError):
+            prior_results = None
+
+    current_metrics = extract_phase_b_metrics(results)
+    phase_b_section = emit_phase_b_section(
+        current_metrics, prior_results, len(categories.get("resolved", [])),
+    )
+
     if report_md_path.exists():
         try:
             with report_md_path.open("a", encoding="utf-8") as f:
                 f.write(section)
+                if phase_b_section:
+                    f.write(phase_b_section)
         except OSError as e:
             print(f"self-analyze: could not append to {report_md_path}: {e}", file=sys.stderr)
 

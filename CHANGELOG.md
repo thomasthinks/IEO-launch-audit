@@ -3,6 +3,109 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.5.2] — 2026-05-20
+
+Phase B of ADR 0002 ships. The skill now pairs its primary measurement
+signal (audit-diff persistence — Phase A) with a companion signal
+(indexing-state delta from check 12). Strict confidence-tier framing
+preserved: attribution noise is unresolvable so the skill reports
+correlation, never causation.
+
+### Added
+
+- **Phase B GSC/Bing delta integration in `scripts/self-analyze.py`.**
+  When self-analyze runs, it now ALSO:
+  1. Reads the auto-rotated prev report JSON
+     (`.launch-readiness-report.prev.json`, established in v1.2's
+     `audit_diff.py` substrate).
+  2. Extracts numeric metric values from check 12 findings'
+     `current` field. Five metric IDs supported:
+     - `bing.crawl_errors_7d` (from `12.bing.crawl_errors.current.crawl_errors_7d`)
+     - `bing.crawled_pages_7d` (from `12.bing.crawl_errors` or `12.bing.crawl_stats`)
+     - `gsc.indexed` (from `12.gsc.indexed_vs_sitemap.current.indexed`)
+     - `gsc.sitemap` (from `12.gsc.indexed_vs_sitemap.current.sitemap`)
+  3. Computes deltas (absolute + percentage) when the same metric is
+     present in both current and prev.
+  4. Emits an **"Indexing-state context (Phase B, medium confidence)"**
+     subsection in the audit report immediately after the "Operator
+     action since last pass" section.
+
+  **Confidence-tier framing (mandatory in section body):**
+  > Companion signals only. Per ADR 0002 Decision 1, audit-diff
+  > persistence is the primary measurement; the deltas below are
+  > reported at confidence-tier MEDIUM at best. Attribution noise is
+  > unresolvable — indexing-state shifts could be operator action,
+  > Google/Bing algorithm updates, seasonality, or other operator
+  > changes the skill didn't recommend. Do not claim causation; read
+  > as correlation only.
+
+  When resolved-findings count >0, the section also notes that any
+  positive delta is "directionally consistent with operator action
+  but cannot be causally attributed." When 0 resolved findings, the
+  section notes deltas are independent of skill recommendations.
+
+  Implementation: ~120 LoC added to `self-analyze.py`. Stdlib only.
+  Zero new network calls. Degrades silently when prev report or check
+  12 findings absent.
+
+### Changed
+
+- **`scripts/self-analyze.py`** Phase B section appended automatically
+  to the audit report when prerequisites are met. No config gate yet
+  — section emits only when prev + current both have check 12 metrics,
+  so first-pass + non-check-12 consumers see nothing new (graceful
+  degrade).
+
+- **`SKILL.md`** version bumped 1.5.1 → 1.5.2.
+
+- **`README.md`** Status line updated.
+
+### Phase A + Phase B interaction (cumulative effect)
+
+A consumer running v1.5.2 against a repo with state file + check 12
+configured + a prev report will now see, in order, at the end of
+their audit report:
+
+1. **Per-check finding sections** (unchanged from v1.x default).
+2. **"Operator action since last pass"** — Phase A categorization
+   (resolved / regressed / persistent / new / long-running).
+3. **"Indexing-state context (Phase B, medium confidence)"** — Phase B
+   metric deltas table + confidence-tier framing + resolved-count
+   context paragraph.
+
+The two phases pair as designed: Phase A measures the action layer
+(did the operator fix?); Phase B measures the outcome layer (did
+indexed-count move?). Both are surfaced; neither is conflated.
+
+### What's NOT in Phase B (deferred to Phase C / v1.6+)
+
+- **Long-term trend persistence.** Phase B uses only the immediate prev
+  pass (auto-rotated `.prev.json`); no multi-pass metric history is
+  retained. If long-term trend is needed, a future schema migration
+  (state_version 1 → 2) can add a `metrics` field to `.ieo-audit-state.yml`.
+- **Substantive-edit confirmation pairing.** Phase B does not yet pair
+  resolved findings with Wayback CDX content-digest delta to confirm
+  the operator actually changed visible content (vs cosmetic
+  dateModified-style flips). Logically natural for Phase B+ but
+  separate work.
+- **Cross-engine LLM citation deltas.** Profound / Otterly / SE Ranking
+  JSON drops not yet ingested by self-analyze; consumer would need a
+  state-side schema for tracking. Deferred to Phase D (cross-repo
+  auto-learn) or later.
+- **Auto-research routine.** Phase C — separate forthcoming work.
+
+### Migration notes for v1.5.1 consumers
+
+No breaking changes. No new files. No new config gates. Existing audit
+output unchanged on first run; Phase B subsection appears on subsequent
+runs when prev report + check 12 metrics are both present.
+
+Smoke-tested end-to-end: prev pass with check 12 metrics (GSC 180/250
+indexed, Bing 1430 crawled) → current pass after operator fixed
+schema_text_parity (GSC 220/250, Bing 1610) → Phase B report shows
++40 indexed (+22.2%), +180 crawled (+12.6%), correctly labeled as
+medium-confidence companion signal.
+
 ## [1.5.1] — 2026-05-20
 
 The v1.4.1 deep research pass closes out. Five firm candidates that
