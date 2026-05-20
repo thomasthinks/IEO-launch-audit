@@ -139,6 +139,7 @@ declare -A CHECK_NAMES=(
   [11]="Live-apex audit"
   [12]="Search Console cross-verification"
   [13]="Imagery provenance (C2PA / IPTC)"
+  [14]="Multimodal markup (figcaption + alt + tables)"
 )
 
 # Map check number to script name
@@ -156,6 +157,7 @@ declare -A CHECK_SCRIPTS=(
   [11]="live-apex"
   [12]="search-console"
   [13]="imagery-provenance"
+  [14]="multimodal-markup"
 )
 
 # Emit report header

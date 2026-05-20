@@ -247,6 +247,31 @@ web_validator_fallback: false
 # merchant_feed: false
 
 # -------------------------------------------------------------------
+# Check 14 -- Multimodal markup (v1.4, opt-in)
+# -------------------------------------------------------------------
+
+# Gate: audit content-image figcaption density, alt-text density, and
+# HTML-table presence. Backed by SearchVIU 2025 + Williams-Cook Duck Test
+# (Feb 2026) for the upstream "visible HTML wins" principle; Aleyda
+# Solís AI-search checklist for the practitioner-tier figcaption + HTML-
+# table recommendations. When unset, the check emits one INFO and skips.
+# Findings default to INFO/PASS; WARN only fires on unambiguously sparse
+# pages with >=3 content images.
+# multimodal_markup_check: false
+
+# Thresholds (optional; defaults shown).
+# Figcaption density on content images.
+# multimodal_figcaption_pass: 0.7    # >=70% triggers PASS
+# multimodal_figcaption_warn: 0.3    # <30% triggers WARN (when >=3 imgs)
+# Alt-text density on content images. Empty alt="" counts as present
+# (decorative-image semantics). Widely covered by a11y tools too; this
+# check audits the same DOM surface from the IEO/GEO angle.
+# multimodal_alt_text_pass: 0.9      # >=90% triggers PASS
+# multimodal_alt_text_warn: 0.7      # <70% triggers WARN (when >=3 imgs)
+# Sample size for the multimodal-markup audit (pages).
+# multimodal_sample_size: 10
+
+# -------------------------------------------------------------------
 # Check 7 -- Sitemap accuracy (v1.3 additions)
 # -------------------------------------------------------------------
 

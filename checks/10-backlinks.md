@@ -14,6 +14,18 @@ to Ahrefs / Moz / Majestic, so this check is **observational, not
 gating** — its job is to surface a trend line, not block the launch
 flip on a backlink count.
 
+**Why backlink *quality* matters more than count (cross-reference).**
+Nature Communications 2025 measured citation concentration in LLM
+responses: fewer than 10 distinct URLs cover 80% of responses per query.
+Once a site enters the top-cited set for a topic, it locks in; sites
+outside that set almost never break in regardless of raw backlink count.
+The strategic implication: a small number of authoritative referring
+domains (Wikipedia, primary-source publications, gov/edu, peer-reviewed
+journals) outweighs a large number of low-tier ones for LLM citation
+eligibility specifically. This is distinct from traditional SEO's
+"link equity" framing — for LLM citation, the discrete hub-presence
+threshold matters more than the continuous link-equity gradient.
+
 **Cited sources:** Wayback CDX API documentation
 (https://github.com/internetarchive/wayback/tree/master/wayback-cdx-server);
 Common Crawl index API

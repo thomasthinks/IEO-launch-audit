@@ -4,6 +4,52 @@ What's beyond v1.0. Not a commitment; a holding area for candidates ranked by
 "would this catch a class of finding the skill misses today, and is it
 portable across consumers."
 
+## v1.4 shipped (2026-05-20)
+
+A two-pass GEO/pGEO recursive-research arc surfaced six candidates;
+verification subagents (NLWeb portability, Bing AI Performance API
+status, Claude `web_search` source-preference claims) killed three.
+The three that survived ship in v1.4. Plus the v1.3.2 dogfooding patch
+(check 9 preamble + ADR pattern 4) which was itself surfaced by the
+same research pass.
+
+- **Check 14 — multimodal markup (figcaption + alt-text + HTML tables).**
+  Opt-in via `multimodal_markup_check: true`. Walks sampled HTML,
+  audits figcaption density on content `<img>` tags + alt-text density
+  + `<table>` presence. Backed by SearchVIU 2025 + Williams-Cook Duck
+  Test (Feb 2026) for the "visible HTML wins" principle; Aleyda Solís
+  AI-search checklist for the practitioner-tier figcaption + HTML-table
+  recommendations. Default INFO/PASS; WARN only on unambiguously sparse
+  pages with ≥3 content images. ~280 lines stdlib Python.
+
+- **Check 11 — measurement-variance advisory (doc patch).** Surfaces
+  the stochasticity of LLM citation outputs (arXiv:2604.07585 +
+  arXiv:2603.08924) so consumers using Profound / Otterly /
+  BrightEdge / 5W / Brave for post-launch citation tracking don't
+  misinterpret single-shot measurements. Recommends n≥5 per query
+  with stratified prompt variants.
+
+- **Check 9 — citation-absorption framing (doc patch).** Distinguishes
+  retrieval ≠ citation ≠ answer influence. arXiv:2604.25707 +
+  AirOps 548K-page study (85% retrieved-never-cited) + Kevin Indig
+  ghost-citation rate (61.7%). Surfaces that optimizing for citation
+  count is coarser than optimizing for absorption.
+
+- **Check 2 — Google "AI features" schema tension (doc patch).**
+  Google's [AI optimization guide](https://developers.google.com/search/docs/fundamentals/ai-optimization-guide)
+  states schema is not required for AI features specifically. Cross-
+  refs to check 14 (visible HTML) as the load-bearing surface for
+  Google AI surfaces. Schema remains load-bearing for rich-results +
+  non-Google engines.
+
+- **Checks 5 + 10 — cited-source concentration framing (doc patches).**
+  Nature Communications 2025 measured citation concentration: n<10
+  URLs cover 80% of LLM responses per query. Implies entity-hub
+  presence (check 5) and authoritative backlink quality (check 10)
+  matter disproportionately because once a site enters the top-cited
+  set for a topic, it locks in. Cross-reference framing only; no new
+  emitters.
+
 ## v1.3 shipped (2026-05-15)
 
 All seven Phase-2-verified candidates landed in v1.3 — see
@@ -101,7 +147,60 @@ Skip silently when unset; default-off. WARN when AI-gen imagery declared but `di
 
 Refresh cadence: quarterly (Merchant Center policy + IPTC adoption rates).
 
-## v1.3+ candidates (longer-trail)
+## v1.5+ candidates (longer-trail)
+
+Each entry surfaced during research but did not survive steelman for
+v1.4. Logged here as the "wait until X changes" list — held under
+specific testable triggers, not generic "someday."
+
+### NLWeb / `schemamap` endpoint detection
+
+**Held — defer to v1.5+ pending two specific signals.** NLWeb (Microsoft,
+2025) is a real protocol with reference impl + Cloudflare adoption.
+But: the canonical `/ask` endpoint is **dynamic-only** — it requires
+per-request natural-language processing against an index, which rules
+out pure SSGs (Hugo, Eleventy, Astro static export) without a serverless
+layer. Yoast 27.1's "schemamap" (March 2026) is the adjacent
+consolidation pattern but is WordPress-bound at the URL level
+(`/wp-json/yoast/v1/schema-aggregator/get-schema/...`) and Yoast itself
+calls it "proposed," not standardized. **No LLM engine has publicly
+confirmed parsing either endpoint for citation eligibility.**
+
+What would unblock v1.5+ promotion:
+
+1. A portable static-file variant of `schemamap` (e.g., a
+   `.well-known/schemamap.json` IETF / W3C / WHATWG draft, or a Microsoft
+   spec doc at `nlweb.ai/spec`).
+2. At least one LLM engine (OpenAI, Perplexity, Anthropic, Google)
+   publishing that it consumes the endpoint.
+
+Until both: don't recommend the endpoint. Don't even emit an INFO
+advisory — that's vendor-watch noise without engine-parsing evidence
+and would violate ADR 0001 pattern 2 (recommending products / surfaces
+not confirmed to be operational).
+
+### Bing AI Performance dashboard API integration
+
+**Held — defer until Microsoft exposes the data via API.** The Feb 2026
+announcement of Bing Webmaster Tools "AI Performance" dashboard exposes
+per-page Copilot citation counts + grounding queries — but **UI-only,
+no API**. Microsoft confirmed verbatim on learn.microsoft.com Q&A: *"In
+the Blog post, no API is mentioned so the answer is not right now."*
+The skill is stdlib-Python; it cannot scrape an authenticated SPA
+dashboard without a Selenium/Playwright dependency, which violates the
+stdlib-only stance.
+
+Unblock when `learn.microsoft.com/en-us/bingwebmaster/` adds an
+AI-Performance endpoint. Check 12 already integrates the existing Bing
+Webmaster API; adding the AI-Performance fetcher is then a small extension.
+
+### LLM probe for check 9 Query Fan-Out (deferred from v1.3)
+
+Opt-in LLM probe that mirrors the v0.5 curation-scaffold pattern:
+driver creates batches, subagent dispatches an LLM to enumerate
+probable fan-out queries for the consumer's content. Held — needs a
+clean opt-in API surface that doesn't bind the skill to a specific LLM
+provider. Plausible v1.5+ once the surface design is clear.
 
 ### GSC live-API integration (service-account JWT or 3-legged OAuth)
 

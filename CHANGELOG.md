@@ -3,6 +3,187 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.4.0] — 2026-05-20
+
+The "fold in all surviving v1.4 candidates" release. A two-pass GEO/pGEO
+recursive-research arc (two parallel discovery subagents + two parallel
+verification subagents) surfaced six candidates; verification killed
+three (NLWeb portability, Bing AI Performance API status, Claude
+`web_search` source-preference). The three that survived plus four
+framing-patch candidates ship in v1.4. The v1.3.2 dogfooding patch
+(check 9 preamble + ADR pattern 4) — surfaced by the same research
+pass — shipped as a separate hotfix; v1.4 builds on it.
+
+### Added
+
+- **Check 14 — multimodal markup (figcaption + alt-text + HTML tables).**
+  New opt-in check. Walks sampled rendered HTML pages, restricts to
+  `<main>` / `<article>` scope when present (falls back to full document
+  with a caveat note), counts `<img>` tags in content scope, `<img>` tags
+  with non-empty `alt=`, `<figure>`/`<figcaption>` pairs, and `<table>`
+  tags (excluding nav/header/footer regions). Aggregates ratios across
+  the sample and emits graded findings (`14.figcaption_dense` PASS at
+  ≥70%, `14.figcaption_sparse` WARN at <30% when ≥3 imgs, similar for
+  alt-text at 90%/70%, plus tables presence INFO). Gated on
+  `multimodal_markup_check: true` in `.launch-readiness.yml`; emits one
+  `14.skipped` INFO when unset. Stdlib only (`re` for HTML parsing, no
+  PIL/BeautifulSoup/lxml). ~280 lines. Audit-budget impact: ~10-30s for
+  the default 10-page sample.
+
+  **Evidence base:**
+  - [SearchVIU 2025](https://www.searchviu.com/en/schema-markup-and-ai-in-2025-what-chatgpt-claude-perplexity-gemini-really-see/)
+    methodology-disclosed test: 5 LLM systems extracted only visible
+    HTML at retrieval time; hidden JSON-LD / Microdata / RDFa ignored.
+  - [Williams-Cook "Duck Test" Feb 2026](https://www.youtube.com/watch?v=-nTqaG3GKLk):
+    fabricated address in JSON-LD only, no visible text — ChatGPT +
+    Perplexity returned the fake address verbatim. LLMs scrape raw
+    JSON-LD as text, not as structured data; visible HTML wins as
+    load-bearing context.
+  - [Aleyda Solís AI-search optimization checklist](https://www.aleydasolis.com/en/ai-search/ai-search-optimization-checklist/)
+    (practitioner-tier): figcaption + HTML tables specifically called
+    out as multimodal-markup recommendations.
+
+  **Source-tier honesty (per ADR 0001):** practitioner-consensus +
+  indirect-methodology alignment. The two methodology-disclosed studies
+  measure the upstream principle ("visible HTML wins"), not figcaption
+  / table deltas directly. WARN is the strongest severity emitted —
+  never FAIL — because no LLM engine has published "we deprecate
+  citation eligibility for images without figcaption" (cf. check 13,
+  which DOES escalate to FAIL when `merchant_feed: true` because
+  Google Merchant Center publishes a concrete demotion policy).
+
+- **Check 11 — post-launch measurement-variance advisory (doc patch).**
+  Added a framing note in the check 11 preamble: when consumers track
+  LLM citations via Profound / Otterly / BrightEdge / 5W / Brave / etc.
+  post-launch, single-shot measurements are unreliable because LLM
+  outputs are stochastic. Recommends **n≥5 per query** with stratified
+  prompt variants (persona, length, framing) and Jaccard / Rank-Biased
+  Overlap / bootstrap-resampled confidence intervals over point
+  estimates. Sources: [arXiv:2604.07585 "Don't Measure
+  Once"](https://arxiv.org/abs/2604.07585) +
+  [arXiv:2603.08924 "Quantifying Uncertainty in AI
+  Visibility"](https://arxiv.org/abs/2603.08924). Methodology-side
+  scaffolding; the skill doesn't measure citations itself, just flags
+  the stochasticity so consumers don't misinterpret any tracking-tool's
+  single-shot output.
+
+- **Check 9 — citation-absorption framing (doc patch).** Added a
+  framing note distinguishing retrieval ≠ citation ≠ answer influence.
+  [arXiv:2604.25707 "From Citation Selection to Citation
+  Absorption"](https://arxiv.org/abs/2604.25707) formalizes the
+  distinction; AirOps 548K-page measurement found 85% of pages
+  retrieved by ChatGPT are never cited; Kevin Indig measured 61.7%
+  ghost-citation rate (link in citation strip without brand name in
+  answer text) across 1.2M responses. Implication for consumer advice:
+  optimizing for citation count is coarser than optimizing for
+  absorption (content that actually shapes the LLM's answer text);
+  the latter is what drives reader traffic.
+
+- **Check 2 — Google "AI features" schema tension surface (doc patch).**
+  Added a 2026-05 update note acknowledging Google's
+  [AI optimization
+  guide](https://developers.google.com/search/docs/fundamentals/ai-optimization-guide)
+  first-party statement: *"Structured data isn't required for generative
+  AI search, and there's no special schema.org markup you need to add."*
+  Schema remains load-bearing for rich-result eligibility, entity graph
+  disambiguation, and non-Google engine parsing (Bing Copilot, ChatGPT
+  Search, Claude Search, Perplexity). For Google AI features
+  specifically, visible HTML (check 14) is the load-bearing surface.
+  Cross-ref test added: schema-graph PASS + check-14 WARN → strategic
+  priority for Google AI features is fixing check 14, not deepening
+  the schema graph.
+
+- **Checks 5 + 10 — cited-source concentration framing (doc patches).**
+  Added cross-reference framing to checks 5 (Wikidata) and 10
+  (Backlinks): Nature Communications 2025 measured citation
+  concentration in LLM responses — fewer than 10 distinct URLs cover
+  80% of responses per query. Entity-hub presence (check 5) and
+  authoritative-domain backlinks (check 10) matter disproportionately
+  because once a site enters the top-cited set for a topic, it locks
+  in. The framing distinguishes the discrete hub-presence threshold
+  from traditional SEO's continuous link-equity gradient.
+
+### Changed
+
+- **`audit.sh`** registers check 14 (`multimodal-markup` script). Default
+  `--checks` block unchanged (1-10); opt in with `--checks 1-14` or
+  `--checks 14`.
+- **`templates/.launch-readiness.yml.example`** gains a check-14 config
+  block: `multimodal_markup_check` gate + tunable thresholds
+  (`multimodal_figcaption_pass`/`_warn`, `multimodal_alt_text_pass`/`_warn`,
+  `multimodal_sample_size`).
+- **`SKILL.md`** description bumped from 13 to 14 categories;
+  multimodal markup added to the parenthetical list; post-launch
+  use line extended with check 14.
+- **`README.md`** Status block updated.
+- **`ROADMAP.md`** gains a new `## v1.4 shipped (2026-05-20)` section
+  at the top documenting the six items above. The longer-trail
+  candidates section is renamed `## v1.5+ candidates` and gains two
+  new "held under specific testable triggers" entries: **NLWeb /
+  `schemamap` endpoint detection** (held pending portable static-file
+  spec + LLM-engine-parsing confirmation) and **Bing AI Performance
+  dashboard API integration** (held pending Microsoft exposing
+  AI-Performance data via the Bing Webmaster API; currently UI-only).
+  Plus the v1.4-deferred LLM-probe for check 9 Query Fan-Out moves
+  here.
+
+### Rejected (verification killed)
+
+Documenting these so future research passes don't re-propose without
+new evidence:
+
+- **NLWeb `/ask` endpoint detection / `schemamap` validation.** NLWeb is
+  dynamic-only (requires per-request natural-language processing) —
+  rules out pure SSGs (Hugo, Eleventy, Astro static export). Yoast 27.1's
+  `schemamap` is WordPress-`/wp-json/`-bound and Yoast itself calls it
+  "proposed." No LLM engine has confirmed parsing either endpoint for
+  citation eligibility. Held to v1.5+ pending portable-spec + engine-
+  parsing-confirmation gates.
+- **Bing AI Performance dashboard API extension.** Microsoft confirmed
+  verbatim on learn.microsoft.com Q&A: "no API right now." UI-only;
+  stdlib-Python can't scrape an authenticated SPA dashboard. Held to
+  v1.5+ pending API exposure.
+- **Claude `web_search` "originals over aggregators" preference.** No
+  verbatim Anthropic source. The `web_search_20260209` docs only
+  mention caller-supplied `allowed_domains` / `blocked_domains` —
+  customer-side filtering, not Anthropic-side preference. The
+  practitioner-inferred framing fails ADR 0001 pattern 4 (vendor-
+  published weight percentages for closed-source ranking).
+- **"pGEO" defined check.** The term is not stably defined in 2026
+  discourse; closest usage is "programmatic GEO" (a content strategy,
+  not an audit category). Existing duplicate-metadata / sitemap-accuracy
+  / internal-link checks catch the failure modes.
+- **AGENTS.md detection.** Wrong surface — AGENTS.md is for AI coding
+  agents (Claude Code, Cursor, Aider), not LLM citation engines. Out
+  of scope.
+
+### Migration notes for v1.3.x consumers
+
+No breaking changes. `audit.sh --checks 1-10` default fast-pass
+behavior is unchanged. To opt into check 14:
+
+```yaml
+# .launch-readiness.yml
+multimodal_markup_check: true
+```
+
+Then run `audit.sh --checks 1-14` or `audit.sh --checks 14`. Tunable
+thresholds are documented in `templates/.launch-readiness.yml.example`
+under the "Check 14" block.
+
+The check-9 / check-11 / check-2 / check-5 / check-10 framing patches
+are documentation-only; no audit-output changes for existing findings.
+Reports will show the corrected framing on the next run when consumers
+read the check docs alongside their report.
+
+### Known doc drift (not in v1.4 scope)
+
+`SKILL.md` § "What it covers" still lists "Eleven audit categories"
+with bullets 1-11; checks 12, 13, 14 are not listed in that section
+(the description block above it lists all 14 correctly). Not fixed in
+v1.4 because the drift predates v1.4 and the fix is larger than the
+v1.4 surface. Will reconcile in a follow-up doc-only pass.
+
 ## [1.3.2] — 2026-05-20
 
 Dogfooding patch. v1.3 shipped ADR 0001 ("claim-verification reflex") to

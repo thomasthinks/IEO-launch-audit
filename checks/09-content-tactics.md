@@ -48,6 +48,22 @@ Profound's 2026 citation-pattern readouts; ALM Corp 325K-prompt LinkedIn
 study; SEJ "Role of E-E-A-T in AI narratives"; Search Engine Land
 "Content strategy in 2026."
 
+**Citation absorption ≠ citation retrieval ≠ answer influence (framing
+clarification).** A piece appearing in an LLM's cited-sources list does
+not mean it *influenced* the answer. The
+["From Citation Selection to Citation Absorption"
+paper](https://arxiv.org/abs/2604.25707) (2026) distinguishes pages that
+get retrieved-and-quoted vs pages that get retrieved-and-discarded
+(absorbed without influence). AirOps's 548K-page measurement found
+**85% of pages retrieved by ChatGPT are never cited**, and even cited
+pages may be "ghost citations" (link present in citation strip without
+the brand name in the answer text — Kevin Indig measured 61.7% ghost-
+citation rate in a 1.2M-response sample). The implication for consumer
+advice: optimizing for citation count is a coarser signal than
+optimizing for *absorption* (content that actually shapes the LLM's
+answer text). The latter is what drives reader traffic; the former is
+just a footnote presence.
+
 ## What's checked
 
 For each piece (or for a stratified sample if catalog is large):

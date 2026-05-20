@@ -30,6 +30,23 @@ External auditors (Screaming Frog, Sitebulb, Ahrefs Site Audit, GSC
 URL Inspection) all hit the live origin. Check 11 surfaces the same
 class of finding without needing a paid tool.
 
+**Post-launch LLM-citation tracking — measurement-variance advisory.**
+If the consumer is using Profound / Otterly / BrightEdge / 5W / Brave
+or any LLM-citation-tracking tool after launch, single-shot measurements
+are unreliable. LLM citation outputs are stochastic — the same query
+issued multiple times produces different citation sets. Two arXiv
+preprints in 2026 formalize this: "Don't Measure Once: Measuring
+Visibility in AI Search" ([arXiv:2604.07585](https://arxiv.org/abs/2604.07585))
+and "Quantifying Uncertainty in AI Visibility"
+([arXiv:2603.08924](https://arxiv.org/abs/2603.08924)). Recommended
+practice: sample **n≥5 per query** with **stratified prompt variants**
+(persona, length, framing) and report Jaccard / Rank-Biased Overlap /
+bootstrap-resampled confidence intervals rather than point estimates.
+This is methodology-side scaffolding consumers should apply to any LLM-
+citation-tracking workflow; the skill doesn't measure citations itself,
+but flagging the stochasticity prevents misinterpretation of any tool's
+single-shot output.
+
 **Cited sources:** Google Search Central — *Crawling and indexing
 overview*; sitemap.xml protocol (sitemaps.org) — `<lastmod>` and URL
 shape requirements; Schema.org — Article hierarchy and required

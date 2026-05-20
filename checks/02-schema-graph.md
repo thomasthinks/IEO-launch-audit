@@ -16,6 +16,22 @@ that schema increases citation *accuracy* (when cited, cited correctly),
 which is what an editorial site wants — Person-entity disambiguation,
 correct topic attribution, accurate cross-reference threading.
 
+**2026-05 update — Google "AI features" tension surface.** Google's
+[AI optimization
+guide](https://developers.google.com/search/docs/fundamentals/ai-optimization-guide)
+(refreshed 2026) states: *"Structured data isn't required for generative
+AI search, and there's no special schema.org markup you need to add."*
+That is first-party guidance from Google for AI Overviews / AI Mode
+specifically. Schema's role for **rich-result eligibility** + **entity
+graph disambiguation** + **non-Google engine parsing (Bing Copilot,
+ChatGPT Search, Claude Search, Perplexity)** is unchanged — schema
+remains load-bearing for those surfaces. But for **Google AI features
+specifically**, don't over-invest in schema as the citation lever.
+Visible HTML content (see check 14) is the load-bearing surface there.
+Test: if a consumer's audit shows schema-graph PASS but check 14
+WARN, the strategic priority for Google AI features is fixing check 14,
+not deepening the schema graph.
+
 The failure mode: a partial or fragmented graph where Person fragments
 don't unify across pages, Article entities aren't linked to a WebSite
 root, or @ids use fragment-only references that crawlers can't resolve

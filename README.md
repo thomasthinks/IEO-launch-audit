@@ -6,7 +6,7 @@ auditors (Screaming Frog, Sitebulb, Ahrefs, Lighthouse, Schema Markup
 Validator, Google Rich Results Test) will flag, plus the LLM-citation-side
 gaps the SEO tool ecosystem still under-covers.
 
-**Status:** 1.3.2 (Phase-2-verified candidates landed; rule-correctness patch for `mainEntity` value-type; dogfooding patch — check 9 preamble rewritten + ADR 0001 pattern 4 added). v1.3 ships seven
+**Status:** 1.4.0 (14 checks; v1.4 adds opt-in check 14 — multimodal markup (figcaption + alt-text + HTML tables); plus framing patches surfaced by 2026-GEO recursive-research pass — citation-absorption vs retrieval in check 9, measurement-variance INFO in check 11, cited-source concentration cross-refs in checks 5+10, Google "schema not required for AI features" tension surface in check 2). v1.3 ships seven
 new findings from the second-pass recursive research: schema↔visible-text
 parity (Google policy backstop; SearchVIU + Duck Test 2026 verified),
 @graph consolidation INFO (NLWeb-readiness; advisory), `about` vs

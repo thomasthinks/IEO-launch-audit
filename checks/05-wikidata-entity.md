@@ -18,6 +18,17 @@ The reciprocity edge is what triangulates entity-graph claims. Wikidata
 P856 → apex is the single highest-leverage move because it's the canonical
 structured claim Google + Bing + LLM systems trust as authoritative.
 
+**Why entity-hub presence matters disproportionately (cross-reference).**
+Nature Communications 2025 found that fewer than 10 distinct URLs appear
+in 80% of LLM responses to a given query — citation concentration is
+narrow. Entity-hub presence (Wikipedia, Wikidata, top-tier hubs in check
+5.5) and authoritative backlinks (check 10) matter disproportionately
+because once a site enters the top-cited set for a query, it locks in.
+Conversely, sites absent from the top hubs almost never break into the
+cited set, regardless of content quality. This shapes the strategic
+calculus: hub presence is a discrete eligibility threshold, not a
+continuous quality dial.
+
 **Cited sources:** Wikidata:Schema.org (https://www.wikidata.org/wiki/Wikidata:Schema.org);
 "How to Get a Knowledge Panel" 2026; momenticmarketing — @id in Schema.org for SEO/LLMs.
 
