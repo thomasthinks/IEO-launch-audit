@@ -793,7 +793,13 @@ def run(args) -> CheckResult:
         ))
 
     # ---- Phase F: discovery artifacts ---------------------------------
-    artifact_paths = ["/robots.txt", "/llms.txt", "/sitemap.xml", "/image-sitemap.xml"]
+    # v1.6.5: image-sitemap.xml gated on `expect_image_sitemap: true` config.
+    # Pre-v1.6.5 always checked /image-sitemap.xml; product/text-heavy sites
+    # without imagery got a spurious WARN. Opt-in pattern matches other
+    # opt-in artifacts.
+    artifact_paths = ["/robots.txt", "/llms.txt", "/sitemap.xml"]
+    if config.get("expect_image_sitemap") is True:
+        artifact_paths.append("/image-sitemap.xml")
     # IndexNow keyfile path: prefer config, else skip silently.
     indexnow_key = config.get("indexnow_key")
     if indexnow_key:
@@ -1046,15 +1052,20 @@ def run(args) -> CheckResult:
             ))
 
     # ---- Phase I: orphan-page + un-sitemapped-link detection ---------
-    # Reconcile two graphs without extra fetches:
-    #   (1) sitemap_set   — every URL the sitemap claims is canonical
-    #   (2) link_set      — every internal href observed across home +
-    #                       about + sampled-piece HTML in `pages`
-    # Sitemap URLs not in link_set: INFO (could be legitimate deep pages
-    # OR genuine orphans; needs human judgment).
-    # Link targets not in sitemap_set: WARN (the page is linked but the
-    # canonical-discovery surface doesn't list it, so external crawlers
-    # may not find it).
+    # Reconcile two graphs:
+    #   (1) sitemap_set — every URL the sitemap claims is canonical
+    #   (2) link_set    — every internal href observed across home +
+    #                     about + sampled-piece HTML + detected listing
+    #                     pages (e.g., /blog/, /writing/) in `pages`
+    # Sitemap URLs not in link_set: INFO (legitimate deep pages or
+    # genuine orphans; needs human judgment).
+    # Link targets not in sitemap_set: WARN (page is linked but canonical-
+    # discovery surface doesn't list it; external crawlers may miss).
+    #
+    # v1.6.5: bug fix — pre-v1.6.5 sampling never crawled listing pages
+    # (/blog/, /writing/, etc.), so any post linked exclusively from a
+    # listing got flagged as orphan. Now: detect listing pages from common
+    # patterns + sitemap presence; fetch + add their links to link_set.
     sitemap_set = {u.rstrip("/") for u in urls}
     link_set: set[str] = set()
     for (_label, html) in pages:
@@ -1065,28 +1076,96 @@ def run(args) -> CheckResult:
             if t:
                 link_set.add(t.rstrip("/"))
 
-    # Pages that are in sitemap but never linked from the sampled corpus.
-    # Exclude sitemap URLs that ARE the sample (a piece is naturally not
-    # going to be linked from itself), home, about, and pillar collection
-    # pages (often only linked from nav).
-    nav_like_paths = {"", "/about", "/writing"}
+    # v1.6.5 — listing-page crawl. Detect listing/index pages from common
+    # patterns and add their internal links to the link-graph. Without
+    # this, blog posts linked from /blog/ (but not from home / about /
+    # sampled pieces) get false-positive orphan findings.
+    DEFAULT_LISTING_PATHS = [
+        "/blog", "/blog/", "/writing", "/writing/", "/posts", "/posts/",
+        "/articles", "/articles/", "/news", "/news/", "/journal", "/journal/",
+        "/essays", "/essays/", "/notes", "/notes/", "/work", "/work/",
+        "/portfolio", "/portfolio/", "/projects", "/projects/",
+    ]
+    detected_listings: list[str] = []
+    for path in DEFAULT_LISTING_PATHS:
+        candidate = f"{apex}{path}"
+        candidate_stripped = candidate.rstrip("/")
+        if (
+            candidate.rstrip("/") in sitemap_set
+            or candidate in sitemap_set
+            or any(u.startswith(candidate_stripped + "/") for u in sitemap_set)
+        ):
+            if candidate not in detected_listings:
+                detected_listings.append(candidate)
+    # Dedupe with-trailing-slash and without (we prefer with-trailing-slash
+    # for listing URLs; if both exist, keep just one).
+    seen_norms: set[str] = set()
+    deduped_listings: list[str] = []
+    for u in detected_listings:
+        norm = u.rstrip("/")
+        if norm in seen_norms:
+            continue
+        seen_norms.add(norm)
+        deduped_listings.append(u)
+    detected_listings = deduped_listings[:5]  # bound the cost: max 5 listings
+
+    listing_links_added = 0
+    for listing_url in detected_listings:
+        l_status, _l_h, l_body = fetch(listing_url, timeout=15)
+        if l_status != 200:
+            continue
+        listing_html = l_body.decode(errors="replace")
+        for href in find_inline_links(listing_html):
+            if not is_internal(href, apex):
+                continue
+            t = normalize_internal(href.split("#")[0], apex)
+            if t:
+                norm_t = t.rstrip("/")
+                if norm_t not in link_set:
+                    link_set.add(norm_t)
+                    listing_links_added += 1
+
+    # v1.6.5 — non-HTML extension filter. Static assets (.pdf / .xml / etc.)
+    # are linked but legitimately don't appear in sitemap.xml; filtering
+    # prevents un_sitemapped false positives.
+    NON_HTML_EXTENSIONS = (
+        ".pdf", ".xml", ".txt", ".json", ".zip", ".ico", ".png", ".jpg",
+        ".jpeg", ".webp", ".gif", ".svg", ".css", ".js", ".woff", ".woff2",
+        ".ttf", ".eot", ".mp4", ".mp3", ".wav", ".ogg", ".webm", ".avif",
+    )
+
+    def _is_html_url(url: str) -> bool:
+        try:
+            path = urllib.parse.urlparse(url).path.lower()
+        except Exception:
+            return True
+        return not path.endswith(NON_HTML_EXTENSIONS)
+
+    # Pages that are in sitemap but never linked from the (expanded) link
+    # graph. Exclude sitemap URLs that ARE the sample (a piece naturally
+    # isn't linked from itself), home, about, and detected listing pages.
+    nav_like_paths = {"", "/about"}
+    # Add detected listing paths to nav_like (they're auto-covered via crawl).
+    for u in detected_listings:
+        p = urllib.parse.urlparse(u).path.rstrip("/")
+        if p:
+            nav_like_paths.add(p)
     sampled_set = {u.rstrip("/") for u in sample_pieces} | {
         f"{apex}".rstrip("/"), f"{apex}/about".rstrip("/")
-    }
+    } | {u.rstrip("/") for u in detected_listings}
+
     apparent_orphans = sorted(
         u for u in sitemap_set
         if u not in link_set
         and u not in sampled_set
         and urllib.parse.urlparse(u).path.rstrip("/") not in nav_like_paths
     )
-    # Internal-link targets that point at URLs the sitemap doesn't list.
-    # Exclude fragment-only / off-apex / non-canonical paths already
-    # filtered above.
     un_sitemapped = sorted(
         t for t in link_set
         if t not in sitemap_set
         and t.startswith(apex)
         and t != apex.rstrip("/")
+        and _is_html_url(t)
     )
 
     if apparent_orphans:

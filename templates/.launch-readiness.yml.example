@@ -426,6 +426,26 @@ web_validator_fallback: false
 # count is 0 OR sitemap unreachable.
 # substantive_edit_pairing: false
 
+# Expected static pages in sitemap (check 7.3, v1.6.5).
+#
+# Default: ["/"] (home only). Override per site-shape. Portfolio sites
+# typically add /writing, /about, /contact. Documentation sites might
+# add /docs, /api. Product sites usually keep the bare default.
+#
+# Pre-v1.6.5 hardcoded ["/", "/writing", "/about", "/contact"] which
+# produced false positives on product sites. The change is backward-
+# breaking ONLY for portfolio consumers who relied on the implicit
+# default — they should add the list explicitly here:
+# expected_static_pages: ["/", "/writing", "/about", "/contact"]
+
+# Expect /image-sitemap.xml at the live apex (check 11.F, v1.6.5).
+#
+# Default false (image-sitemap.xml is rare; only image-heavy sites need
+# one). Pre-v1.6.5 unconditionally flagged its absence as WARN; v1.6.5+
+# gates the check on this opt-in flag so product / text-heavy sites
+# without imagery don't get a spurious finding.
+# expect_image_sitemap: false
+
 # -------------------------------------------------------------------
 # Curation scaffold (v0.5+)
 # -------------------------------------------------------------------

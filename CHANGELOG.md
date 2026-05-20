@@ -3,6 +3,126 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.6.5] — 2026-05-20
+
+Closes the four remaining bugs surfaced by the pdfops.dev audit on
+v1.6.3. v1.6.4 fixed the highest-impact bug (404 cascade); v1.6.5
+closes the remaining false-positive vectors. Same consumer-feedback
+loop, same shape: bug surfaced consumer-side → maintainer ratifies →
+ship → consumer can re-run to validate.
+
+### Fixed
+
+#### (a) Bug #1 — Orphan false positives from sample-only link-graph (check 11.I)
+
+Pre-v1.6.5 phase I built the link-graph only from home + /about +
+sampled pieces. Listing pages (`/blog/`, `/writing/`, etc.) — the
+pages that *do* link to most posts — were never crawled. Posts linked
+exclusively from a listing got flagged as orphans.
+
+**Fix:** auto-detect listing pages from sitemap presence. v1.6.5
+checks 20 common listing patterns (`/blog`, `/writing`, `/posts`,
+`/articles`, `/news`, `/journal`, `/essays`, `/notes`, `/work`,
+`/portfolio`, `/projects` — both with + without trailing slash).
+A path is treated as a detected listing when (i) the URL appears in
+sitemap, OR (ii) any sitemap URL is a child of that path. Detected
+listings are deduped (with + without trailing slash) and capped at
+5 per audit (budget bound). Each is fetched (200 only) and its
+internal links added to `link_set`.
+
+Detected listings are also added to `nav_like_paths` + `sampled_set`
+so they don't show up as their own orphans.
+
+#### (b) Bug #2 — Non-HTML extensions flagged as un-sitemapped (check 11.I)
+
+`/invoice-template.pdf` and similar static assets are legitimately
+linked but legitimately absent from sitemap.xml. Pre-v1.6.5 flagged
+them as un-sitemapped WARN.
+
+**Fix:** filter by URL path extension. v1.6.5 excludes 23 non-HTML
+extensions from `un_sitemapped`: `.pdf`, `.xml`, `.txt`, `.json`,
+`.zip`, `.ico`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.svg`,
+`.css`, `.js`, `.woff`, `.woff2`, `.ttf`, `.eot`, `.mp4`, `.mp3`,
+`.wav`, `.ogg`, `.webm`, `.avif`. Helper: `_is_html_url()`.
+
+#### (c) Bug #3 — Personal-portfolio URL shape assumption (check 7.3)
+
+Pre-v1.6.5 hardcoded `["/", "/writing", "/about", "/contact"]` as
+expected static pages. Product sites (pdfops.dev style) got WARN
+findings for missing `/writing` + `/about` + `/contact` even though
+those pages legitimately don't apply.
+
+**Fix:** config-driven via `expected_static_pages` in
+`.launch-readiness.yml`. Default is `["/"]` (home only — universal).
+Portfolio / blog / doc consumers add their expected pages explicitly.
+
+```yaml
+# Portfolio consumer migration:
+expected_static_pages: ["/", "/writing", "/about", "/contact"]
+```
+
+**Backward-compat note:** portfolio consumers who relied on the
+implicit default need to add the list to their config. This is a
+deliberate behavioral break — the implicit portfolio default was the
+bug. Migration is one line of YAML.
+
+#### (d) Bug #4 — `/image-sitemap.xml` unconditional flag (check 11.F)
+
+Pre-v1.6.5 always checked `/image-sitemap.xml` and emitted WARN
+when missing. Product / text-heavy sites without imagery got a
+spurious finding.
+
+**Fix:** gate on `expect_image_sitemap: true` config opt-in. Default
+false. Image-heavy sites that want the check opt in:
+
+```yaml
+expect_image_sitemap: true
+```
+
+### Architectural validation (same as v1.6.4)
+
+Same consumer-feedback loop, same ADR 0002 invariants preserved.
+Consumer-side session detected bugs + did triage; maintainer-side
+session ratified + shipped. Both invariants (advisory-only consumer-
+side; never auto-mutate) held.
+
+### Changed
+
+- **`scripts/check-live-apex.py`** phase I: listing-page detection
+  + crawl + non-HTML extension filter. Phase F: image-sitemap gating.
+- **`scripts/check-sitemap.py`** check 7.3: `expected_static_pages`
+  config-driven with default `["/"]`.
+- **`templates/.launch-readiness.yml.example`** gains
+  `expected_static_pages` + `expect_image_sitemap` opt-in blocks.
+- **`SKILL.md`** version 1.6.4 → 1.6.5.
+- **`README.md`** Status line updated.
+
+### Migration notes
+
+**Default-behavior changes (one-line YAML migration for portfolio consumers):**
+
+| Site shape | Action |
+|---|---|
+| Product site (pdfops.dev) | No action — defaults now correct. |
+| Portfolio (thomasjankowski.com) | Add `expected_static_pages: ["/", "/writing", "/about", "/contact"]` to `.launch-readiness.yml`. |
+| Image-heavy site | Add `expect_image_sitemap: true` if you emit `/image-sitemap.xml`. |
+| Blog / docs | Set `expected_static_pages` to match your shape (e.g., `["/", "/blog", "/about"]`). |
+
+**Audit-output changes:** consumers without `/about` will see (compared
+to v1.6.3):
+
+- v1.6.3: 6+ false-positive findings (cascade) + WARN on missing
+  `/image-sitemap.xml` + WARN on missing `/writing` + `/contact` + INFO
+  on orphan blog posts + WARN on un-sitemapped `.pdf` links.
+- v1.6.4: 6+ false positives → 1 `11.0.expected_pages_missing` MV
+  (cascade fixed).
+- v1.6.5: also gone: image-sitemap WARN (gated); orphan false positives
+  (listing crawled); un-sitemapped `.pdf` (filtered); portfolio-shape
+  WARN (config-driven).
+
+Result: a clean v1.6.5 audit of a product site shows only real signal.
+Same for portfolio sites once they configure `expected_static_pages`.
+
 ## [1.6.4] — 2026-05-20
 
 Bug fix from real consumer feedback. v1.6.x ran against a product-site

@@ -251,28 +251,48 @@ def run(args) -> CheckResult:
     # sitemap emits it as `<APEX>`, `<APEX>/`, or just `/` and however the
     # config carries it. Strip trailing slashes from both sides; treat the
     # bare apex (empty-path) as equivalent to `/`.
+    #
+    # v1.6.5: expected list is now config-driven via `expected_static_pages`.
+    # Pre-v1.6.5 hardcoded ["/", "/writing", "/about", "/contact"] —
+    # portfolio-shaped default that produced false positives on product
+    # sites. New default: ["/"]. Portfolio consumers add the rest via
+    # config.
     canonical = config.get("canonical_origin", "")
     apex = canonical.rstrip("/")
     static_pages_seen = {(u["loc"] or "").rstrip("/") for u in urls if u["loc"]}
-    expected_static = ["/", "/writing", "/about", "/contact"]
+    expected_static = config.get("expected_static_pages", ["/"])
+    if not isinstance(expected_static, list):
+        expected_static = ["/"]
     missing_static = []
     if canonical:
         for sp in expected_static:
             # For the root ("/"), the normalised target is the bare apex.
-            target = apex if sp == "/" else apex + sp
+            sp_norm = sp if sp.startswith("/") else "/" + sp
+            target = apex if sp_norm == "/" else apex + sp_norm.rstrip("/")
             if target not in static_pages_seen:
-                missing_static.append(sp)
+                missing_static.append(sp_norm)
         if missing_static:
             result.findings.append(Finding(
                 id="7.3.static_pages", severity="WARN",
-                title=f"Static pages missing from sitemap: {missing_static}",
+                title=f"Configured static pages missing from sitemap: {missing_static}",
                 fix_safety="manual",
-                fix_action="Add static pages (home, /writing, /about, /contact) to sitemap emitter.",
+                fix_action=(
+                    "Either add the missing static pages to the sitemap "
+                    "emitter, OR adjust `expected_static_pages` in "
+                    ".launch-readiness.yml if the page set doesn't apply to "
+                    "this site shape (e.g., product sites typically don't "
+                    "have /writing or /contact). Default expected: [\"/\"]; "
+                    "override with a custom list for portfolios, blogs, "
+                    "documentation sites, etc."
+                ),
             ))
         else:
             result.findings.append(Finding(
                 id="7.3.static_pages", severity="PASS",
-                title="Common static pages present in sitemap",
+                title=(
+                    f"All {len(expected_static)} configured static page(s) "
+                    "present in sitemap"
+                ),
             ))
 
     # 7.4 — Per-engine freshness band coverage (v1.3).
