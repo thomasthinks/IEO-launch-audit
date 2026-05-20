@@ -3,6 +3,140 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.6.2] — 2026-05-20
+
+Closes a named architectural gap from the v1.5.2 CHANGELOG ("Phase B+
+substantive-edit confirmation pairing"). When the consumer opts in,
+self-analyze pairs each pass's resolved findings with a Wayback CDX
+content-delta probe to distinguish substantive content changes from
+emitter-side / cosmetic fixes. **Compliance-theater detection.**
+
+### Added
+
+- **Phase B+ substantive-edit pairing in `scripts/self-analyze.py`**
+  (~150 LoC stdlib). Gated on three conditions:
+  1. `substantive_edit_pairing: true` in `.launch-readiness.yml`.
+  2. `canonical_origin` set in config.
+  3. Resolved-findings count > 0 (no resolutions → no probe).
+
+  When all three hold, the probe:
+
+  1. Fetches `<canonical_origin>/sitemap.xml`.
+  2. Random-samples 3 URLs (deterministic seed=42, same as v1.2 7.5).
+  3. For each: Wayback CDX `cdx/search/cdx` API call for the most-recent
+     snapshot's timestamp; fetches the snapshot via
+     `web.archive.org/web/<ts>id_/<url>`; fetches current rendered HTML
+     from the live URL; computes `difflib.SequenceMatcher` ratio on
+     stripped visible text.
+  4. Classifies each URL as `substantive` (≥10% text delta),
+     `cosmetic` (<10% text delta), or `unverifiable` (Wayback returned
+     no prior snapshot OR fetch failed).
+  5. Emits **"Substantive-edit pairing (Phase B+, advisory)"** subsection
+     in the audit report after the Phase B Indexing-state section.
+
+  **Two output framings (mandatory):**
+
+  - **Compliance-theater advisory** when `substantive == 0/N` but
+    `resolved_count > 0`:
+    > Resolved findings may reflect emitter-side fixes (e.g., dropping
+    > unmirrored JSON-LD strings, adjusting metadata) rather than
+    > visible content changes. Consider whether each resolution
+    > actually addresses the underlying issue — schema-text parity
+    > resolved by dropping schema is technically a resolution but
+    > doesn't help LLM citation behavior the way restoring visible
+    > content does.
+
+  - **Directional consistency** when `substantive ≥ 1/N`:
+    > Substantive content delta paired with this pass's resolved
+    > findings. Correlation only — the audit cannot causally attribute
+    > content changes to specific resolved findings without further
+    > evidence (which sampled URLs correspond to which findings is
+    > not tracked).
+
+### Changed
+
+- **`scripts/audit.sh`** passes `--config "$CONFIG"` to `self-analyze.py`
+  so the gate can read `substantive_edit_pairing` + `canonical_origin`.
+
+- **`scripts/self-analyze.py`** gains a `--config` argument (default:
+  `<repo>/.launch-readiness.yml`).
+
+- **`templates/.launch-readiness.yml.example`** gains
+  `substantive_edit_pairing` opt-in block with framing of the
+  compliance-theater detection use case.
+
+- **`SKILL.md`** version 1.6.1 → 1.6.2.
+- **`README.md`** Status line updated.
+
+### Architectural implication
+
+Phase B + Phase B+ now pair to answer two distinct questions about
+each audit pass:
+
+- **Phase B** (v1.5.2): *Did the operator's action correlate with
+  indexing-state changes?* (GSC/Bing delta, medium confidence,
+  attribution noise unresolvable.)
+- **Phase B+** (v1.6.2): *Did the operator actually change visible
+  content?* (Wayback CDX content-delta on sampled URLs, distinguishes
+  substantive from cosmetic/emitter-side fixes.)
+
+Both are companion signals to Phase A's primary audit-diff persistence.
+Neither claims causation; both surface useful framing for the operator
+to interpret their own actions.
+
+### Why opt-in, not default-on
+
+Three reasons:
+
+1. **Network bound.** ~30s-2min per pass when enabled (3 Wayback CDX
+   calls + 3 current fetches + 3 prior fetches). Default-on would
+   inflate every consumer's audit budget.
+2. **Useful primarily for content sites.** A consumer auditing a
+   pure-static SaaS landing page rarely benefits from substantive-edit
+   pairing — there's no content to "change substantively." Default-on
+   would spam advisories.
+3. **Wayback dependency.** New sites without Wayback history can't be
+   probed. Opt-in lets the consumer decide when their site has enough
+   history for the probe to be useful.
+
+### Migration notes
+
+No breaking changes. No new findings emitted in the JSON report.
+Existing audit-output finding semantics unchanged. Phase B+ subsection
+only appears when all three gate conditions hold; consumers who don't
+opt in see zero behavior change.
+
+To opt in:
+
+```yaml
+# .launch-readiness.yml
+canonical_origin: https://example.com   # already required for many checks
+substantive_edit_pairing: true          # gate
+```
+
+Then run an audit pass with resolved findings — the new subsection
+appears in `.launch-readiness-report.md` after the Phase B section.
+
+### Architecture map at v1.6.2
+
+```
+Consumer side:
+├─ 14 audit checks (1-10 default, 11-14 opt-in)
+├─ Phase A: .ieo-audit-state.yml + self-analyze
+│   ├─ "Operator action since last pass" — action layer
+│   ├─ Phase B: GSC/Bing delta — outcome layer (medium confidence)
+│   └─ Phase B+: Substantive-edit pairing — content layer (this release)
+└─ Operator UX: scripts/inspect-state.py — state inspection CLI
+
+Maintainer side:
+├─ Phase C: scripts/research/ auto-research routine
+│   ├─ PROTOCOL.md — execution guide for /schedule sessions
+│   └─ auto-pass.sh — git + gh ship mechanics
+└─ ADRs 0001 + 0002 — claim-verification + self-improving architecture
+```
+
+Phase D (cross-repo auto-learn) remains deferred to v1.7+.
+
 ## [1.6.1] — 2026-05-20
 
 Operator UX patch. v1.5.0 shipped Phase A's `.ieo-audit-state.yml`

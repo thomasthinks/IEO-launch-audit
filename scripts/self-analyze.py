@@ -25,10 +25,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from difflib import SequenceMatcher
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _lib import load_config
 from _state import (
     State, StateFinding, load_state, write_state, build_state_from_results,
 )
@@ -349,6 +355,176 @@ def emit_report_section(
     return "\n".join(lines)
 
 
+# Phase B+ (v1.6.2): substantive-edit pairing via Wayback CDX.
+#
+# Distinguishes substantive content changes from cosmetic / emitter-side
+# fixes. When self-analyze detects resolved findings AND the operator
+# has opted in via `substantive_edit_pairing: true` config, this probe
+# samples sitemap URLs + compares current HTML against the most-recent
+# Wayback snapshot. <10% text delta = cosmetic; ≥10% = substantive.
+#
+# Gated on: substantive_edit_pairing config + canonical_origin set +
+# resolved-findings count > 0. Network-bound (Wayback CDX + current
+# HTML fetch); ~30s-2min budget. Stdlib only.
+#
+# Output: advisory subsection. When 0/N substantive but findings
+# resolved, flag compliance-theater risk. When ≥1/N substantive,
+# directional consistency note.
+_SUBSTANTIVE_SAMPLE = 3
+_SUBSTANTIVE_THRESHOLD = 0.10  # >=10% text delta = substantive
+_SUBSTANTIVE_UA = "IEO-launch-audit/self-analyze (substantive-edit-pairing)"
+_LOC_RE = re.compile(r"<loc>([^<]+)</loc>", re.IGNORECASE)
+
+
+def _fetch_sitemap_urls(canonical_origin: str, limit: int = 30) -> list[str]:
+    """Fetch sitemap.xml; return up to `limit` URLs."""
+    sitemap_url = f"{canonical_origin.rstrip('/')}/sitemap.xml"
+    try:
+        req = urllib.request.Request(
+            sitemap_url,
+            headers={"User-Agent": _SUBSTANTIVE_UA},
+        )
+        with urllib.request.urlopen(req, timeout=15) as r:
+            text = r.read().decode("utf-8", errors="replace")
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError):
+        return []
+    return _LOC_RE.findall(text)[:limit]
+
+
+def _strip_text(html: str) -> str:
+    s = re.sub(r"<script\b.*?</script>", " ", html, flags=re.DOTALL | re.IGNORECASE)
+    s = re.sub(r"<style\b.*?</style>", " ", s, flags=re.DOTALL | re.IGNORECASE)
+    s = re.sub(r"<[^>]+>", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _wayback_substantive_probe(url: str) -> tuple[str | None, float | None]:
+    """Per-URL: fetch most-recent Wayback snapshot + current HTML +
+    compute SequenceMatcher ratio on stripped text. Returns
+    (status, delta) where status is one of 'substantive', 'cosmetic',
+    'unverifiable', and delta is 1.0 - ratio (None when unverifiable).
+    """
+    cdx_url = (
+        "https://web.archive.org/cdx/search/cdx?"
+        + urllib.parse.urlencode({
+            "url": url,
+            "output": "json",
+            "limit": "-1",
+            "fl": "timestamp,digest",
+        })
+    )
+    try:
+        req = urllib.request.Request(cdx_url, headers={"User-Agent": _SUBSTANTIVE_UA})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            rows = json.loads(r.read().decode("utf-8"))
+    except (urllib.error.URLError, urllib.error.HTTPError,
+            json.JSONDecodeError, TimeoutError, OSError):
+        return "unverifiable", None
+    if not isinstance(rows, list) or len(rows) < 2:
+        return "unverifiable", None
+    prior_ts = rows[-1][0]
+    wayback_url = f"https://web.archive.org/web/{prior_ts}id_/{url}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": _SUBSTANTIVE_UA})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            current_html = r.read().decode("utf-8", errors="replace")
+        req = urllib.request.Request(wayback_url, headers={"User-Agent": _SUBSTANTIVE_UA})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            prior_html = r.read().decode("utf-8", errors="replace")
+    except (urllib.error.URLError, urllib.error.HTTPError,
+            TimeoutError, OSError):
+        return "unverifiable", None
+    cur_text = _strip_text(current_html)
+    prior_text = _strip_text(prior_html)
+    if not cur_text or not prior_text:
+        return "unverifiable", None
+    ratio = SequenceMatcher(None, prior_text, cur_text).ratio()
+    delta = 1.0 - ratio
+    return ("substantive" if delta >= _SUBSTANTIVE_THRESHOLD else "cosmetic"), delta
+
+
+def emit_substantive_edit_section(
+    resolved_count: int,
+    canonical_origin: str | None,
+    enabled: bool,
+) -> str:
+    """Optional Phase B+ subsection. Only emits when enabled + resolved
+    findings present + canonical_origin known + sitemap fetchable +
+    samples yield at least one verifiable result."""
+    if not enabled or resolved_count == 0 or not canonical_origin:
+        return ""
+    urls = _fetch_sitemap_urls(canonical_origin, limit=30)
+    if not urls:
+        return ""
+
+    # Deterministic sample (same as check-sitemap.py 7.5 seed).
+    import random as _random
+    _random.seed(42)
+    sample = _random.sample(urls, min(_SUBSTANTIVE_SAMPLE, len(urls)))
+
+    results: list[tuple[str, str, float | None]] = []
+    for u in sample:
+        status, delta = _wayback_substantive_probe(u)
+        results.append((u, status, delta))
+
+    substantive = [r for r in results if r[1] == "substantive"]
+    cosmetic = [r for r in results if r[1] == "cosmetic"]
+    unverifiable = [r for r in results if r[1] == "unverifiable"]
+    scored = len(substantive) + len(cosmetic)
+
+    if scored == 0:
+        # All unverifiable — emit nothing rather than spam the report.
+        return ""
+
+    lines: list[str] = []
+    lines.append("")
+    lines.append("### Substantive-edit pairing (Phase B+, advisory)")
+    lines.append("")
+    lines.append(
+        f"Sampled {len(sample)} sitemap URLs from `{canonical_origin}`; compared "
+        f"current rendered HTML against most-recent Wayback snapshot. Threshold: "
+        f"≥10% text delta = substantive content change."
+    )
+    lines.append("")
+    lines.append(
+        f"- **Substantive content delta:** {len(substantive)}/{scored} sampled URLs"
+    )
+    lines.append(
+        f"- **Cosmetic-only (or unchanged):** {len(cosmetic)}/{scored} sampled URLs"
+    )
+    if unverifiable:
+        lines.append(
+            f"- **Unverifiable:** {len(unverifiable)} URL(s) — Wayback CDX returned "
+            "no prior snapshot OR current/prior fetch failed."
+        )
+    lines.append("")
+
+    if len(substantive) == 0:
+        # Compliance-theater advisory.
+        lines.append(
+            f"**Compliance-theater advisory:** {resolved_count} finding(s) marked "
+            "resolved this pass, but **0/{0} sampled URLs show substantive content "
+            "change** vs the most-recent Wayback snapshot. Resolved findings may "
+            "reflect *emitter-side* fixes (e.g., dropping unmirrored JSON-LD strings, "
+            "adjusting metadata) rather than *visible content* changes. Consider "
+            "whether each resolution actually addresses the underlying issue — "
+            "schema-text parity resolved by dropping schema is technically a "
+            "resolution but doesn't help LLM citation behavior the way restoring "
+            "visible content does.".format(scored)
+        )
+    elif len(substantive) >= 1 and resolved_count > 0:
+        lines.append(
+            f"**Directionally consistent with operator action:** "
+            f"{len(substantive)}/{scored} sampled URLs show substantive content "
+            "delta, paired with this pass's resolved findings. Correlation only — "
+            "the audit cannot causally attribute content changes to specific "
+            "resolved findings without further evidence (which sampled URLs "
+            "correspond to which findings is not tracked)."
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def run(args) -> int:
     repo = Path(args.repo)
     report_json_path = Path(args.report_json)
@@ -412,8 +588,19 @@ def run(args) -> int:
             prior_results = None
 
     current_metrics = extract_phase_b_metrics(results)
+    resolved_count = len(categories.get("resolved", []))
     phase_b_section = emit_phase_b_section(
-        current_metrics, prior_results, len(categories.get("resolved", [])),
+        current_metrics, prior_results, resolved_count,
+    )
+
+    # Phase B+ (v1.6.2): substantive-edit pairing via Wayback CDX.
+    # Opt-in via `substantive_edit_pairing: true` config + requires
+    # canonical_origin set. Adds ~30s-2min when enabled.
+    config = load_config(args.config) if args.config else {}
+    substantive_section = emit_substantive_edit_section(
+        resolved_count=resolved_count,
+        canonical_origin=config.get("canonical_origin"),
+        enabled=config.get("substantive_edit_pairing") is True,
     )
 
     if report_md_path.exists():
@@ -422,6 +609,8 @@ def run(args) -> int:
                 f.write(section)
                 if phase_b_section:
                     f.write(phase_b_section)
+                if substantive_section:
+                    f.write(substantive_section)
         except OSError as e:
             print(f"self-analyze: could not append to {report_md_path}: {e}", file=sys.stderr)
 
@@ -436,5 +625,16 @@ if __name__ == "__main__":
     parser.add_argument("--report-json", required=True, help="Path to audit JSON report")
     parser.add_argument("--report-md", required=True, help="Path to audit MD report")
     parser.add_argument("--skill-version", required=True, help="Current skill version")
+    parser.add_argument(
+        "--config",
+        default=None,
+        help=(
+            "Path to .launch-readiness.yml (default: <repo>/.launch-readiness.yml). "
+            "Used for Phase B+ substantive-edit pairing config "
+            "(`substantive_edit_pairing: true` + `canonical_origin`)."
+        ),
+    )
     args = parser.parse_args()
+    if args.config is None:
+        args.config = str(Path(args.repo) / ".launch-readiness.yml")
     sys.exit(run(args))

@@ -238,7 +238,8 @@ if python3 "$SKILL_DIR/scripts/self-analyze.py" \
     --repo "$REPO" \
     --report-json "$REPORT_JSON" \
     --report-md "$REPORT_MD" \
-    --skill-version "$SKILL_VERSION" 2>&1 | sed 's/^/[self-analyze] /'; then
+    --skill-version "$SKILL_VERSION" \
+    --config "$CONFIG" 2>&1 | sed 's/^/[self-analyze] /'; then
   : # success path; self-analyze prints its own status on stderr
 fi
 

@@ -410,6 +410,22 @@ web_validator_fallback: false
 # "no surprise network probes" stance.
 # multi_ua_probe: false
 
+# Phase B+ substantive-edit pairing (v1.6.2).
+#
+# When self-analyze detects resolved findings (Phase A) AND
+# canonical_origin is set, this probe samples 3 sitemap URLs +
+# compares current rendered HTML against the most-recent Wayback CDX
+# snapshot. <10% text delta = cosmetic / emitter-side fix;
+# ≥10% = substantive content change. Output: advisory subsection in
+# the audit report. When 0/N substantive but findings resolved,
+# flags compliance-theater risk.
+#
+# Network-bound: ~30s-2min when opted in (3 Wayback CDX calls + 3
+# current HTML fetches + 3 prior snapshot fetches). Stdlib only.
+# Skipped silently when canonical_origin missing OR resolved-findings
+# count is 0 OR sitemap unreachable.
+# substantive_edit_pairing: false
+
 # -------------------------------------------------------------------
 # Curation scaffold (v0.5+)
 # -------------------------------------------------------------------
