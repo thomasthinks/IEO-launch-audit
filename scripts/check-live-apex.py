@@ -416,42 +416,16 @@ def run(args) -> CheckResult:
     ))
 
     # ---- Phase A: reachability sweep ----------------------------------
-    # Parallelized via ThreadPoolExecutor (workers=10) — for 250+ URL
-    # sitemaps this drops wall-time from ~25s sequential to ~3s. The
-    # fetch() helper uses urllib, which is thread-safe for independent
-    # connections; 10 workers is conservative to stay under typical CDN
-    # rate-limit thresholds.
     non_2xx: list[tuple[str, int]] = []
     redirects: list[tuple[str, str]] = []
-    redirect_chains: list[tuple[str, list[tuple[str, int]]]] = []
     codes: Counter = Counter()
-
-    def _probe(u: str) -> tuple[str, int, dict]:
+    for u in urls:
         code, headers, _b = fetch(u, head=True, timeout=15)
-        return (u, code, headers)
-
-    import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
-        for u, code, headers in ex.map(_probe, urls):
-            codes[code] += 1
-            if code in (301, 302, 307, 308):
-                redirects.append((u, headers.get("Location", "-")))
-            elif code < 200 or code >= 300:
-                non_2xx.append((u, code))
-
-    # For URLs that redirect, measure the full chain depth. Chains >1 hop
-    # are SEO-bad (each hop drops PageRank ~10% per Matt Cutts 2014 + lifts
-    # LCP). Capped to top 20 redirected URLs to bound the chain-walk cost;
-    # in practice chains cluster on a handful of canonicalization rules.
-    if redirects:
-        sampled_redirects = redirects[:20]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
-            for u, chain in zip(
-                (r[0] for r in sampled_redirects),
-                ex.map(lambda r: follow_redirect_chain(r[0]), sampled_redirects),
-            ):
-                redirect_chains.append((u, chain))
-
+        codes[code] += 1
+        if code in (301, 302, 307, 308):
+            redirects.append((u, headers.get("Location", "-")))
+        elif code < 200 or code >= 300:
+            non_2xx.append((u, code))
     if non_2xx:
         result.findings.append(Finding(
             id="11.A.unreachable", severity="FAIL",
@@ -479,31 +453,6 @@ def run(args) -> CheckResult:
                 "serves (slash or no-slash; pick one and align)."
             ),
         ))
-
-    # 11.A.redirect_chain_depth — measure chain-length on sampled redirects.
-    # Chains >1 hop cost LCP + drop PageRank per hop; sitemap URLs should
-    # never need more than a single 308 to reach the canonical URL.
-    if redirect_chains:
-        long_chains = [
-            (u, len(chain) - 1) for u, chain in redirect_chains
-            if len(chain) > 2  # chain has start + ≥2 hops
-        ]
-        if long_chains:
-            result.findings.append(Finding(
-                id="11.A.redirect_chain_depth", severity="FAIL",
-                title=f"{len(long_chains)} sitemap URL(s) require >1 redirect hop to resolve",
-                current=[{"url": u, "hops": h} for u, h in long_chains[:5]],
-                fix_action=(
-                    "Each hop costs ~10% PageRank + adds LCP latency. Update "
-                    "sitemap URLs to point at the terminal canonical URL."
-                ),
-                notes="Sampled top-20 redirects; if redirects > 20, increase the cap or fix the most common chain.",
-            ))
-        else:
-            result.findings.append(Finding(
-                id="11.A.redirect_chain_depth", severity="PASS",
-                title=f"All {len(redirect_chains)} sampled redirects resolve in 1 hop",
-            ))
 
     # ---- Pre-fetch HTML for analysis ----------------------------------
     piece_urls = [u for u in urls if "/writing/" in u and "/pillar/" not in u]
