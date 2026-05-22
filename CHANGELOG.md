@@ -3,6 +3,171 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.7.0] — 2026-05-22
+
+Three additive improvements closing top-ranked Screaming-Frog parity
+gaps from the v1.7.0 candidate proposal. One proposed candidate
+(check 15 — accessibility) was rejected during verification — its
+load-bearing IEO/GEO rationale did not survive primary-source review.
+
+**This release supersedes the reverted v1.7.0 push** (commit
+`4d62ad5`, reverted by `2c1a202` on 2026-05-22). The reverted push
+shipped two folklore claims that ADR 0001 verification would have
+caught had it been run pre-merge:
+
+1. *"2025-26 follow-on work to Princeton/Georgia Tech KDD 2024
+   measured a correlation between axe-core failure density and
+   LLM-summary quality regressions"* — the GEO paper (arXiv
+   2311.09735) exists but contains zero mentions of accessibility,
+   axe, WCAG, alt text, or ARIA; no follow-on paper measuring this
+   correlation was findable across arXiv / ACM DL / Semantic Scholar.
+   The proposal's "Princeton/Georgia Tech" framing was also wrong —
+   the paper is Princeton + IIT Delhi (one independent author has
+   Georgia Tech PhD history).
+2. *"Chains cost ~10% PageRank per hop (Matt Cutts 2014)"* — Cutts
+   never said 10% and never in 2014. He said *"some loss"* (Eric
+   Enge interview, March 2010) and later *"identical to a link"*
+   (2013 Webmasters video). Gary Illyes' July 2016 statement is
+   the modern Google position: *"30x redirects don't lose PageRank
+   anymore."* The "10%" is back-derived from the 1998 PageRank
+   damping factor (~15%) being retroactively applied to redirects.
+
+The replacement release ships only what survived verification. The
+chain-depth check is still shipped — chains are still bad — but the
+rationale is rewritten to cite [Google's site-moves doc](https://developers.google.com/search/docs/crawling-indexing/site-move-with-url-changes)
+(≤3 hops recommended, 10-hop Googlebot ceiling) + LCP latency
+instead of the folklore PageRank number.
+
+### Added
+
+#### (a) `4.psi.opportunities` + `4.lighthouse.opportunities`
+
+Lighthouse already computes a list of `opportunity`-class audits
+alongside the headline CWV scores — render-blocking resources,
+unused CSS / JS, image-delivery, font-display, legacy JS,
+duplicated JS, DOM size, etc. Pre-v1.7 the skill extracted only
+the headline metrics + category scores; the opportunity cause-list
+was dropped on the floor. v1.7.0 surfaces the top 8 opportunities
+(by `numericValue` savings_ms, descending) as standalone findings.
+
+New helper `_extract_opportunities(audits, top_n=8)` filters by
+`audit.details.type == "opportunity"` (still current in Lighthouse
+13 / PSI v5 per the Oct 2025 [Insights migration blog](https://developer.chrome.com/blog/moving-lighthouse-to-insights);
+the migration renamed several opportunity audit IDs but preserved
+the schema, so the shape-based filter is rename-invisible). Skips
+audits with `score >= 0.9` (near-perfect) or `numericValue < 100ms`
+(de-minimis).
+
+`4.psi.opportunities` lands in the PSI path; `4.lighthouse.opportunities`
+mirrors it in the local Lighthouse CLI path. Severity: WARN when
+max savings_ms ≥ 1000, INFO otherwise. Opportunities are advisory
+(headline CWV findings already FAIL on out-of-band metrics) — this
+surface exposes the underlying causes.
+
+Closes the Screaming-Frog PageSpeed-category parity gap with no
+additional API calls.
+
+#### (b) `11.A.redirect_chain_depth` — sibling to phase H
+
+Phase A (sitemap reachability sweep) now walks the redirect chain
+on sampled sitemap redirects (top 20) and FAILs when any chain
+requires >1 hop. Sibling to phase H, which already measured chain
+depth on sampled inline-internal-link hrefs — phase H covers
+internal-link drift, phase A here covers sitemap-entry drift.
+
+Per Google Search Central's site-moves doc: *"Googlebot can follow
+up to 10 hops in a 'chain' of multiple redirects … we advise
+redirecting to the final destination directly. If this is not
+possible, keep the number of redirects in the chain low, ideally
+no more than 3 and fewer than 5."* Each hop also adds LCP latency
+on the cold path.
+
+PASS when all sampled redirects resolve in 1 hop; FAIL with the
+top-5 offenders enumerated otherwise. Reuses the existing
+`follow_redirect_chain()` helper unchanged.
+
+### Changed
+
+#### (c) Phase A reachability sweep parallelized (workers=10)
+
+The Phase A sweep iterates every sitemap URL with HEAD. Pre-v1.7
+this was sequential — for a 250-URL sitemap, ~25s wall-time. v1.7.0
+parallelizes via `concurrent.futures.ThreadPoolExecutor(max_workers=10)`,
+dropping wall-time to ~3s. The chain-walk in (b) above runs at
+workers=5 to keep concurrent connection count reasonable when many
+URLs redirect.
+
+`fetch()` uses urllib (thread-safe for independent connections);
+10 workers stays under typical CDN rate-limit thresholds. No
+behavior change to existing findings — the parallelization is
+transparent.
+
+#### (d) `audit.sh` default-CHECKS comment
+
+Pre-v1.7 the comment claimed *"Check 11 (live-apex) only runs when
+explicitly requested OR when a live origin is configured."* The
+code did not implement the "OR when …" auto-include — the cap was
+unconditionally `1,2,...,10`. The comment is now accurate:
+checks 11-14 are all opt-in via `--checks`, with one-line semantics
+per check noted in-comment. Behavior unchanged.
+
+### Rejected during verification
+
+#### Check 15 — Accessibility (axe-core via Lighthouse)
+
+The candidate proposal framed a new accessibility check as
+load-bearing for IEO/GEO on the claim that *"axe-core failure
+density correlates with LLM-summary quality regressions, observed
+in 2025-26 A/B testing (Princeton/Georgia Tech KDD 2024, follow-on
+work)."* Three problems surfaced under verification:
+
+1. The anchor paper (Aggarwal et al., *GEO: Generative Engine
+   Optimization*, KDD 2024 / arXiv 2311.09735) contains zero
+   mentions of accessibility, axe, WCAG, alt text, ARIA, or
+   semantic HTML. It measures content/citation tactics — not HTML
+   structural quality.
+2. No follow-on paper measuring the specific axe-core ↔ LLM
+   correlation could be located across arXiv, ACM DL, Semantic
+   Scholar (seven distinct query formulations tried). The closest
+   directionally-correct evidence is [ScrapeGraphAI-100k](https://arxiv.org/html/2602.15189v1)
+   on plain-text-vs-structured-HTML extraction loss — supports
+   the intuition, not the specific claim.
+3. The IEO-specific positioning is what would have differentiated
+   the check from Lighthouse's own accessibility category. Without
+   the load-bearing rationale, the check would be a re-skin of
+   what any consumer running Lighthouse already gets, and the
+   skill's README positioning ("catches what external audits will
+   flag, before they flag it") would be diluted.
+
+The compliance-grounds case (WCAG 2.2 / ADA / EAA) stands on its
+own but is not what the skill is for — every audit tool in the
+ecosystem covers a11y on compliance grounds. Deferring until and
+unless primary-measurement evidence for the IEO connection
+emerges.
+
+### Migration notes
+
+- Consumers running check 4 against a PSI-enabled origin will see
+  1-3 new findings: `4.psi.opportunities` (severity: WARN if max
+  savings_ms ≥ 1000ms, INFO otherwise). If a baseline `prev` report
+  exists, self-analyze will count these as new findings.
+- Consumers running check 11 will see `11.A.redirect_chain_depth`
+  as a new PASS / FAIL finding alongside the existing
+  `11.A.redirects` WARN.
+- Phase A wall-time on 250+ URL sitemaps drops from ~25s to ~3s.
+- No `.launch-readiness.yml` config keys added or removed.
+
+### Audit-state shift
+
+A v1.7.0 self-analyze pass on a consumer corpus that previously
+ran v1.6.5 will likely show:
+
+- 1-3 new INFO/WARN findings from `4.psi.opportunities` (if PSI
+  is configured)
+- 1 new PASS/FAIL finding from `11.A.redirect_chain_depth` (if
+  check 11 is enabled and the sitemap has any redirects)
+- ~22s shaved off Phase A wall-time per check-11 run
+
 ## [1.6.5] — 2026-05-20
 
 Closes the four remaining bugs surfaced by the pdfops.dev audit on

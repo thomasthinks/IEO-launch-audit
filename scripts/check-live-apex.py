@@ -49,6 +49,7 @@ Phases G-J reuse the existing page + link samples (no extra apex fetches).
 """
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
 import random
@@ -416,16 +417,27 @@ def run(args) -> CheckResult:
     ))
 
     # ---- Phase A: reachability sweep ----------------------------------
+    # Parallelized via ThreadPoolExecutor (workers=10). For 250+ URL
+    # sitemaps this drops wall-time from ~25s sequential to ~3s. fetch()
+    # uses urllib (thread-safe for independent connections); 10 workers
+    # is conservative under typical CDN rate-limit thresholds.
     non_2xx: list[tuple[str, int]] = []
     redirects: list[tuple[str, str]] = []
+    redirect_chains: list[tuple[str, list]] = []
     codes: Counter = Counter()
-    for u in urls:
+
+    def _probe(u: str):
         code, headers, _b = fetch(u, head=True, timeout=15)
-        codes[code] += 1
-        if code in (301, 302, 307, 308):
-            redirects.append((u, headers.get("Location", "-")))
-        elif code < 200 or code >= 300:
-            non_2xx.append((u, code))
+        return (u, code, headers)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+        for u, code, headers in ex.map(_probe, urls):
+            codes[code] += 1
+            if code in (301, 302, 307, 308):
+                redirects.append((u, headers.get("Location", "-")))
+            elif code < 200 or code >= 300:
+                non_2xx.append((u, code))
+
     if non_2xx:
         result.findings.append(Finding(
             id="11.A.unreachable", severity="FAIL",
@@ -453,6 +465,54 @@ def run(args) -> CheckResult:
                 "serves (slash or no-slash; pick one and align)."
             ),
         ))
+
+        # 11.A.redirect_chain_depth — measure chain length on sampled
+        # sitemap redirects (top 20). Sibling to phase H, which measures
+        # chains on sampled inline-internal-link hrefs; phase A here
+        # covers chains on the sitemap-entry side. Per Google Search
+        # Central's site-moves doc, keep redirect chains "ideally no more
+        # than 3 and fewer than 5"; Googlebot's hard ceiling is 10 hops.
+        # Each hop also adds LCP latency on the cold path.
+        # (https://developers.google.com/search/docs/crawling-indexing/site-move-with-url-changes)
+        sampled = redirects[:20]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+            for u, chain in zip(
+                (r[0] for r in sampled),
+                ex.map(lambda r: follow_redirect_chain(r[0]), sampled),
+            ):
+                redirect_chains.append((u, chain))
+
+        long_chains = [
+            (u, len(chain) - 1) for u, chain in redirect_chains
+            if len(chain) > 2
+        ]
+        if long_chains:
+            result.findings.append(Finding(
+                id="11.A.redirect_chain_depth", severity="FAIL",
+                title=(
+                    f"{len(long_chains)} sitemap URL(s) require >1 redirect "
+                    f"hop to resolve (of {len(redirect_chains)} sampled)"
+                ),
+                current=[{"url": u, "hops": h} for u, h in long_chains[:5]],
+                fix_action=(
+                    "Update sitemap entries to point at the terminal "
+                    "canonical URL. Each hop adds LCP latency and consumes "
+                    "crawl budget; Googlebot stops following at 10 hops."
+                ),
+                notes=(
+                    "Sampled top 20 redirects; if total redirects > 20 the "
+                    "remainder isn't chain-walked. Fix the most common "
+                    "canonicalization rule and re-run."
+                ),
+            ))
+        else:
+            result.findings.append(Finding(
+                id="11.A.redirect_chain_depth", severity="PASS",
+                title=(
+                    f"All {len(redirect_chains)} sampled sitemap redirects "
+                    "resolve in 1 hop"
+                ),
+            ))
 
     # ---- Pre-fetch HTML for analysis ----------------------------------
     piece_urls = [u for u in urls if "/writing/" in u and "/pillar/" not in u]

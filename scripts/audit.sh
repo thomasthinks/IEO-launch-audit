@@ -61,9 +61,16 @@ REPO="$(cd "$REPO" && pwd)"
 CONFIG="${CONFIG:-$REPO/.launch-readiness.yml}"
 OUTPUT_DIR="${OUTPUT_DIR:-$REPO}"
 
-# Default check set. Check 11 (live-apex) only runs when explicitly requested
-# OR when a live origin is configured (canonical_origin / live_probe_origin).
-# It hits the network and adds ~60-90s; not in the 1-10 default block.
+# Default check set. Checks 11-14 are opt-in and must be requested
+# explicitly via --checks:
+#   11 (live-apex): hits the network, adds ~60-90s; needs canonical_origin
+#       or live_probe_origin in .launch-readiness.yml.
+#   12 (search-console): needs bing_api_key + gsc_snapshot_path.
+#   13 (imagery-provenance): needs canonical_origin + a built site.
+#   14 (multimodal-markup): needs a built site.
+# Each opt-in check emits MANUAL_VERIFY when its config is absent rather
+# than crashing, so `--checks 1-14` is safe in any environment; the cap
+# at 1-10 keeps the default report focused on source-side checks.
 [[ -z "$CHECKS" ]] && CHECKS="1,2,3,4,5,6,7,8,9,10"
 
 SKILL_VERSION="$(grep '^  version:' "$SKILL_DIR/SKILL.md" | head -1 | awk -F': ' '{print $2}')"
