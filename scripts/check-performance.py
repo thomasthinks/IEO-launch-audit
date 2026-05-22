@@ -195,6 +195,7 @@ def _parse_psi_result(data: dict) -> dict:
     out["si_s"] = si_ms / 1000.0 if si_ms is not None else None
     tti_ms = _num("interactive")
     out["tti_s"] = tti_ms / 1000.0 if tti_ms is not None else None
+    out["opportunities"] = _extract_opportunities(audits)
     return out
 
 
@@ -247,6 +248,59 @@ def _parse_crux_block(block: dict | None) -> dict | None:
             "distributions": m.get("distributions"),
         }
     return out if out["metrics"] else None
+
+
+def _extract_opportunities(audits: dict, top_n: int = 8) -> list[dict]:
+    """Pull Lighthouse `opportunity`-type audits from a parsed Lighthouse
+    JSON `audits` dict, sorted by potential savings (descending).
+
+    Lighthouse classifies audits by `details.type`; `opportunity` means
+    "do this and the page gets faster by ~X ms." These already-computed
+    suggestions are the cause-list behind the headline CWV scores (LCP /
+    CLS / INP) and map directly to SF's PageSpeed category.
+
+    Skips opportunities with `score >= 0.9` (Lighthouse-graded near-perfect)
+    OR `numericValue < 100ms` (de-minimis savings). Returns at most top_n
+    entries; callers cap finding-spam.
+
+    Each returned entry: {id, title, savings_ms, score, display_value}.
+    """
+    if not isinstance(audits, dict):
+        return []
+    opps = []
+    for audit_id, audit in audits.items():
+        if not isinstance(audit, dict):
+            continue
+        details = audit.get("details") or {}
+        if details.get("type") != "opportunity":
+            continue
+        savings_ms = audit.get("numericValue")
+        score = audit.get("score")
+        if savings_ms is None or savings_ms < 100:
+            continue
+        if score is not None and score >= 0.9:
+            continue
+        opps.append({
+            "id": audit_id,
+            "title": audit.get("title", audit_id),
+            "savings_ms": float(savings_ms),
+            "score": score,
+            "display_value": audit.get("displayValue", ""),
+        })
+    opps.sort(key=lambda o: -o["savings_ms"])
+    return opps[:top_n]
+
+
+def _opportunity_severity(savings_ms: float) -> str:
+    """Map opportunity savings to Finding severity. Conservative: these
+    are improvements, not failures (headline CWV checks already FAIL
+    if the metric itself is bad). 1000ms+ is genuinely costly; <500ms
+    is sub-perceptible; in-between is INFO-worthy."""
+    if savings_ms >= 1000:
+        return "WARN"
+    if savings_ms >= 500:
+        return "INFO"
+    return "INFO"
 
 
 def _grade_crux_category(category: str | None) -> str:
@@ -597,6 +651,43 @@ def _run_psi_phase(result: CheckResult, origin: str, api_key: str,
             notes="TBT is a Lighthouse-lab proxy for INP; CrUX field INP is the ranking signal.",
         ))
 
+    # 4.psi.opportunities — Lighthouse "opportunity"-class audits. Already
+    # computed by Lighthouse; previously dropped on the floor. Surfacing the
+    # top-N closes ~80% of SF SEO Spider's PageSpeed category gap (render-
+    # blocking resources, unused CSS/JS, image optimization, font display,
+    # etc.) without re-running PSI or adding new analysis. See
+    # references/sf-parity.md § PageSpeed.
+    #
+    # Use the home-URL measurement as the canonical opportunity set (other
+    # URLs in `per_url` may have stack-specific opportunities; the home-URL
+    # is the most-cited surface for AI-search / LLM extraction).
+    home_perf = next((p for p in per_url if p.get("_url") == home), per_url[0])
+    opps = home_perf.get("opportunities") or []
+    if opps:
+        sample = [
+            {"id": o["id"], "title": o["title"], "savings_ms": int(o["savings_ms"]),
+             "display": o["display_value"]}
+            for o in opps
+        ]
+        max_savings = max(o["savings_ms"] for o in opps)
+        sev = _opportunity_severity(max_savings)
+        result.findings.append(Finding(
+            id="4.psi.opportunities", severity=sev,
+            title=f"Lighthouse surfaced {len(opps)} performance opportunities for {home_perf.get('_url')} (top savings: {int(max_savings)}ms)",
+            current=sample,
+            fix_safety="manual",
+            fix_action="Address the top opportunity (largest savings_ms first). "
+                       "See https://developer.chrome.com/docs/lighthouse/performance/ for per-audit fix guidance.",
+            notes="Opportunities are improvement suggestions, not failures. "
+                  "Headline CWV (4.lcp / 4.cls / 4.inp) already FAILs if a metric is out-of-band; "
+                  "this finding surfaces the underlying causes.",
+        ))
+    else:
+        result.findings.append(Finding(
+            id="4.psi.opportunities", severity="PASS",
+            title=f"No actionable Lighthouse performance opportunities for {home_perf.get('_url')} (all audits >=0.9 or savings <100ms)",
+        ))
+
     # 4.crux.* — CrUX field data (real-user, last-28-day). Page-level uses
     # the home-URL response; origin-level is identical across responses.
     if include_crux:
@@ -702,6 +793,26 @@ def run(args) -> CheckResult:
                             title=f"INP/TTI {inp:.0f}ms (target <=200ms)",
                             current=f"{inp:.0f}ms", expected="<=200ms",
                             fix_safety="manual",
+                        ))
+                    # Local-Lighthouse opportunities surface (mirrors PSI
+                    # 4.psi.opportunities). See _extract_opportunities for the
+                    # cause-list logic.
+                    lh_opps = _extract_opportunities(audits)
+                    if lh_opps:
+                        max_savings = max(o["savings_ms"] for o in lh_opps)
+                        result.findings.append(Finding(
+                            id="4.lighthouse.opportunities",
+                            severity=_opportunity_severity(max_savings),
+                            title=f"Lighthouse surfaced {len(lh_opps)} performance opportunities (top savings: {int(max_savings)}ms)",
+                            current=[
+                                {"id": o["id"], "title": o["title"],
+                                 "savings_ms": int(o["savings_ms"]),
+                                 "display": o["display_value"]}
+                                for o in lh_opps
+                            ],
+                            fix_safety="manual",
+                            fix_action="Address the top opportunity (largest savings_ms first). "
+                                       "See https://developer.chrome.com/docs/lighthouse/performance/.",
                         ))
                 else:
                     result.findings.append(Finding(

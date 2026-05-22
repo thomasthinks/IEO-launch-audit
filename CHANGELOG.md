@@ -3,6 +3,94 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.7.0] — 2026-05-22
+
+Adds check 15 (accessibility via axe-core) + closes the top 3 gaps
+surfaced by the new Screaming Frog parity audit
+(`references/sf-parity.md`). Three additive improvements, no behavior
+changes to existing checks.
+
+### Added
+
+#### Check 15 — Accessibility (axe-core via Lighthouse)
+
+New check covers ~50 WCAG 2.0/2.1/2.2 rules via Lighthouse's
+accessibility category (which bundles the axe-core engine). Surfaces
+failing audits sorted by Lighthouse weight × failing-node-count.
+
+Load-bearing rationale: LLM citation engines parse rendered HTML;
+semantic-HTML failures (missing alt, unlabeled buttons/links, heading
+skips, invalid lang attrs) directly degrade AI extraction quality. The
+check covers WCAG compliance + IEO/GEO signal in one pass.
+
+- New script: `scripts/check-accessibility.py` — single PSI call
+  requesting `category=accessibility`; parses
+  `categories.accessibility.auditRefs` + per-audit details; emits
+  Findings per failing audit sorted by weight × node-count.
+- New check doc: `checks/15-accessibility.md`.
+- Wired into `audit.sh`: CHECK_NAMES[15] + CHECK_SCRIPTS[15] +
+  default CHECKS bumped to `1-15`.
+
+Closes sf-parity gap row "15 — Accessibility (axe-core via Lighthouse)".
+
+#### Check 4.psi.opportunities + 4.lighthouse.opportunities — Performance opportunities surface
+
+Lighthouse already runs its full audit when the perf check fires; v1.6.x
+extracted only the headline CWV metrics (LCP / CLS / INP / TBT) + the
+category scores. The `opportunity`-class audits (render-blocking
+resources, unused CSS/JS, image-delivery, font-display, legacy JS,
+duplicated JS, DOM size, etc.) were dropped on the floor.
+
+v1.7.0 surfaces the top 8 opportunities by savings_ms, with severity
+scaled to max savings (WARN >=1000ms, INFO 500-1000ms, INFO <500ms).
+Headline CWV findings still FAIL on out-of-band metrics; the new
+findings expose the underlying cause-list.
+
+- New helper: `_extract_opportunities(audits, top_n=8)` in
+  `check-performance.py` — skips score>=0.9 and savings<100ms;
+  sorts by savings_ms descending; returns at most top_n entries.
+- New finding `4.psi.opportunities` in the PSI path (home URL).
+- New finding `4.lighthouse.opportunities` in the local-Lighthouse-CLI
+  path.
+
+Closes sf-parity gap row "04.b — Lighthouse opportunities surface".
+
+#### Check 11.A.redirect_chain_depth — Sitemap redirect-chain depth
+
+Pre-v1.7.0 phase A flagged sitemap URLs returning a redirect but didn't
+measure chain length. Chains >1 hop cost LCP latency + drop PageRank
+per hop (Matt Cutts 2014). Sitemap entries should require at most a
+single 308 to reach canonical.
+
+v1.7.0 walks up to 20 sampled redirect chains (capped to bound cost)
+and FAILs if any chain requires >1 hop. Phase A reachability sweep is
+also now parallelized (ThreadPoolExecutor workers=10), dropping
+wall-time on 250+ URL sitemaps from ~25s to ~3s.
+
+- Parallelization: ThreadPoolExecutor with `_probe()` helper.
+- New finding `11.A.redirect_chain_depth`: FAIL on long chains, PASS
+  when all sampled chains resolve in 1 hop.
+- `follow_redirect_chain()` reused unchanged.
+
+Closes sf-parity gap row "11.b — Full-sitemap response-code sweep".
+
+### Fixed
+
+- `audit.sh` default `CHECKS` was capped at `1,2,3,4,5,6,7,8,9,10`
+  even though checks 11-14 (live-apex, search-console, imagery-provenance,
+  multimodal-markup) were defined in v1.5+. v1.7.0 corrects the default
+  to `1-15`. Pre-v1.7.0 invocations without explicit `--checks` were
+  silently skipping checks 11-14.
+
+### Reference
+
+- `references/sf-parity.md` (added in this same release cycle): coverage
+  map between Screaming Frog's ~245 default checks and this skill's 15
+  checks; identifies which SF categories IEO covers (FULL/PARTIAL/GAP)
+  + which IEO-specific surfaces SF doesn't see; ranks 9 recommended
+  new IEO checks by effort/impact. The current release closes 3 of the
+  9 ranked items; the remaining 6 are queued for v1.8+.
+
 ## [1.6.5] — 2026-05-20
 
 Closes the four remaining bugs surfaced by the pdfops.dev audit on

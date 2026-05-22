@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # IEO-launch-audit — top-level orchestrator
 #
-# Runs 10 audit checks. Reports findings to .launch-readiness-report.md
+# Runs 15 audit checks. Reports findings to .launch-readiness-report.md
 # and .launch-readiness-report.json at repo root.
 #
 # Usage:
@@ -11,7 +11,7 @@
 #   --repo PATH           Audit this repo (default: $PWD)
 #   --report-only         Don't apply any fixes; just report (default)
 #   --apply-safe-fixes    Apply fixes tagged `safe` in checks/NN-*.md
-#   --checks NN,NN,...    Run only specified checks (default: all 10)
+#   --checks NN,NN,...    Run only specified checks (default: all 15)
 #   --config PATH         Override config path (default: <repo>/.launch-readiness.yml)
 #   --output-dir PATH     Where to emit reports (default: <repo>/)
 #   --diff                After the run, diff current report vs prior snapshot
@@ -64,7 +64,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-$REPO}"
 # Default check set. Check 11 (live-apex) only runs when explicitly requested
 # OR when a live origin is configured (canonical_origin / live_probe_origin).
 # It hits the network and adds ~60-90s; not in the 1-10 default block.
-[[ -z "$CHECKS" ]] && CHECKS="1,2,3,4,5,6,7,8,9,10"
+[[ -z "$CHECKS" ]] && CHECKS="1-15"
 
 SKILL_VERSION="$(grep '^  version:' "$SKILL_DIR/SKILL.md" | head -1 | awk -F': ' '{print $2}')"
 echo "IEO-launch-audit  v${SKILL_VERSION}"
@@ -140,6 +140,7 @@ declare -A CHECK_NAMES=(
   [12]="Search Console cross-verification"
   [13]="Imagery provenance (C2PA / IPTC)"
   [14]="Multimodal markup (figcaption + alt + tables)"
+  [15]="Accessibility (axe-core via Lighthouse)"
 )
 
 # Map check number to script name
@@ -158,6 +159,7 @@ declare -A CHECK_SCRIPTS=(
   [12]="search-console"
   [13]="imagery-provenance"
   [14]="multimodal-markup"
+  [15]="accessibility"
 )
 
 # Emit report header
