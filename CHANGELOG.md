@@ -3,6 +3,35 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.8.0] — 2026-06-14
+
+One additive change to check 12 (Search Console cross-verification):
+an **optional fleet-wide fallback** for the Bing Webmaster API key.
+
+**Added**
+
+- `_resolve_fleet_bing_key()` — a final fallback in check 12's key
+  resolution. When neither inline `bing_webmaster_api_key` nor the
+  repo-local `bing_webmaster_secret_path` resolves, the check reads a
+  shared SOPS store and extracts `bing_webmaster.api_key`. The store
+  location comes from the `FLEET_SECRETS_FILE` env var or a new
+  `fleet_secrets_path` config key — **no hardcoded path** (honors the
+  "portable / no consumer-specific assumptions" principle). This lets an
+  operator point many repos at one shared, account-level Bing key instead
+  of copying the key into each repo's sops.
+
+**Changed**
+
+- Resolution precedence is now: inline config → repo-local secret →
+  fleet store. Local always wins; the fleet store is only the floor.
+
+**Audit-state shift**
+
+- None for existing consumers. The fallback is reached only when a repo
+  currently resolves *no* key (Bing side skipped today) **and** the
+  operator has set `FLEET_SECRETS_FILE` / `fleet_secrets_path`. Absent
+  that, behavior is byte-identical — graceful-degrade preserved.
+
 ## [1.7.0] — 2026-05-22
 
 Three additive improvements closing top-ranked Screaming-Frog parity
