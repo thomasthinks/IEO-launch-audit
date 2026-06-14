@@ -79,6 +79,32 @@ def _resolve_secret(repo: Path, secret_rel: str | None, env_var: str) -> str | N
     return None
 
 
+def _resolve_fleet_bing_key(config: dict) -> str | None:
+    """Optional fleet-wide fallback: read a shared Bing key from a SOPS store
+    used across repos, so a repo needn't carry its own copy. Portable by
+    design — no hardcoded path: the store location comes from the
+    FLEET_SECRETS_FILE env var or the `fleet_secrets_path` config key. Absent
+    both (the default for any consumer), returns None and check 12 degrades
+    exactly as before. The store must hold the key at `bing_webmaster.api_key`.
+    Tried last, so inline config / repo-local secret always win."""
+    store = os.environ.get("FLEET_SECRETS_FILE") or config.get("fleet_secrets_path")
+    if not store:
+        return None
+    store = os.path.expanduser(store)
+    if not os.path.exists(store):
+        return None
+    try:
+        out = subprocess.run(
+            ["sops", "-d", "--extract", '["bing_webmaster"]["api_key"]', store],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    return out.stdout.strip() or None
+
+
 def _resolve_sitemap_url_count(origin: str) -> int | None:
     """Fetch live sitemap.xml and return URL count. None on failure."""
     if not origin:
@@ -126,6 +152,7 @@ def _check_bing(result: CheckResult, repo: Path, config: dict, origin: str) -> b
     key = (
         config.get("bing_webmaster_api_key")
         or _resolve_secret(repo, config.get("bing_webmaster_secret_path"), "BING_WEBMASTER_API_KEY")
+        or _resolve_fleet_bing_key(config)
     )
     if not key:
         return False
