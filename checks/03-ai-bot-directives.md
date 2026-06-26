@@ -9,11 +9,12 @@ Two parallel crawler classes matter in 2026:
    queries and produce attributed citations. Allowing them is the floor for
    appearing in AI-powered search results.
 
-2. **Training-class crawlers** (GPTBot, ClaudeBot, Google-Extended, CCBot,
-   Meta-ExternalAgent, Applebot-Extended) — these crawl for training-set
-   inclusion in foundation models. Allowing them puts the content in the
-   parametric knowledge of future LLMs, which is the slower, broader,
-   more durable citation path.
+2. **Training / grounding-class controls** (GPTBot, ClaudeBot,
+   Google-Extended, CCBot, Applebot-Extended, cohere-training-data-crawler) — these
+   govern training-set inclusion and, for Google-Extended, Gemini Apps /
+   Vertex Gemini grounding use. Allowing them can put the content in
+   future model knowledge or grounding surfaces; blocking them is not the
+   same as blocking Google Search.
 
 For an editorial / essay site with no paywall, the consensus is to allow
 both classes. For sites with proprietary data or first-publication revenue,
@@ -30,8 +31,8 @@ signals editorial intent. The companion `llms-full.txt` (full-text dump for
 ingestion) is shipped by Anthropic, Vercel, LangGraph.
 
 **Cited sources:** llmstxt.org spec; Anthropic three-bot framework (ALM
-Corp May 2026); OpenAI crawler documentation; Google Search docs on
-Google-Extended; W3C robots.txt spec.
+Corp May 2026); OpenAI crawler documentation; Google crawler docs on
+Googlebot / GoogleOther / Google-Extended; W3C robots.txt spec.
 
 ## What's checked
 
@@ -58,32 +59,33 @@ these user-agents:
 - `Applebot` (Apple Spotlight / Siri)
 - `DuckAssistBot` (DuckDuckGo AI search)
 - `MistralAI-User` (Mistral chat)
-- `GoogleOther` (Google R&D crawls)
+- `GoogleOther` (generic Google product/R&D crawler; no Search inclusion guarantee)
 - `Google-NotebookLM` (Google NotebookLM)
 - `Amazonbot` (Amazon Alexa / Rufus)
 - `Meta-ExternalAgent` (Meta AI products)
 
 | Assertion | Pass | Warn | Fail |
 |---|---|---|---|
-| All 14 citation-class user-agents have explicit Allow OR site has no Disallow | yes | 1-3 missing | 4+ missing |
+| All 16 citation-class user-agents have explicit Allow OR site has no Disallow | yes | 1-3 missing | 4+ missing |
 
 ### 3.3 — Training-class bot policy
 
-robots.txt should explicitly state policy on each training-class
-user-agent. "Explicit" is the gate, not "Allow" or "Disallow" — both are
-valid policies, but the file should make the choice visible.
+robots.txt should explicitly state policy on each training / grounding
+user-agent or control token. "Explicit" is the gate, not "Allow" or
+"Disallow" — both are valid policies, but the file should make the
+choice visible.
 
-Training-class user-agents to address:
+Training / grounding-class user-agents or control tokens to address:
 - `GPTBot` (OpenAI training)
 - `ClaudeBot` (Anthropic training)
-- `Google-Extended` (Google training opt-out flag — note: not a true bot, a signaling header)
+- `Google-Extended` (publisher-control token for Gemini training + grounding; not a true bot, and not a Google Search ranking/inclusion control)
 - `CCBot` (Common Crawl, feeds ~all training sets)
 - `Applebot-Extended` (Apple training)
-- `Meta-ExternalAgent` (Meta training)
+- `cohere-training-data-crawler` (Cohere training)
 
 | Assertion | Pass | Warn | Fail |
 |---|---|---|---|
-| All 6 training-class user-agents have explicit Allow or Disallow | yes | 1-2 implicit | 3+ implicit |
+| All 6 training / grounding-class user-agents or control tokens have explicit Allow or Disallow | yes | 1-2 implicit | 3+ implicit |
 
 ### 3.4 — Bytespider posture
 
@@ -184,7 +186,7 @@ Allow: /
 User-agent: Meta-ExternalAgent
 Allow: /
 
-# --- Training-class bots (operator policy decision; default: allow for editorial / no-paywall sites) ---
+# --- Training / grounding-class bots (operator policy decision; default: allow for editorial / no-paywall sites) ---
 User-agent: GPTBot
 Allow: /
 
@@ -198,6 +200,9 @@ User-agent: CCBot
 Allow: /
 
 User-agent: Applebot-Extended
+Allow: /
+
+User-agent: cohere-training-data-crawler
 Allow: /
 
 # --- Bytespider: block at edge/WAF instead; robots.txt entry is a signal only ---
@@ -301,7 +306,7 @@ heuristic: signature + pillar pieces only).
 ## Failure ratings
 
 - **FAIL (must fix before flip):** robots.txt missing, no Sitemap directive,
-  3+ citation-class bots not addressed, training-class policy unstated.
+  3+ citation-class bots not addressed, training / grounding-class policy unstated.
 - **WARN (should fix before flip):** llms.txt missing, llms-full.txt missing,
   Bytespider not addressed.
 - **PASS:** all assertions hold.

@@ -32,15 +32,15 @@ Thirteen audit categories, each with cite-able rationale and concrete fixes:
 |---|---|---|
 | 1 | Technical SEO | HTTP headers, canonical URLs, 404 status, mobile-first viewport, hero-image attrs, sitemap lastmod accuracy |
 | 2 | Schema.org graph | JSON-LD validation + completeness (WebSite root, absolute @id URLs, ImageObject, ItemList nesting, Speakable selector array); opt-in web-validator fallback for long-tail @types |
-| 3 | AI-bot directives | robots.txt + llms.txt + llms-full.txt. Citation-class + training-class user-agent coverage. Bytespider edge-block + optional Cloudflare WAF API verification |
+| 3 | AI-bot directives | robots.txt + llms.txt + llms-full.txt. Citation-class + training/grounding-class user-agent coverage. Bytespider edge-block + optional Cloudflare WAF API verification |
 | 4 | Core Web Vitals | LCP / INP / CLS targets. Opt-in PageSpeed Insights v5 with CrUX field-data parsing; delegates to vercel:performance-optimizer if available; Lighthouse CLI fallback |
 | 5 | Wikidata entity graph | Person sameAs to Q-ID, P856 (official website) reciprocity. Operator-side checklist |
 | 6 | IndexNow | Key file + publish-hook ping flow. Bing/Yandex/Naver coverage |
 | 7 | Sitemap accuracy | lastmod matches real mtimes (file_mtime mode) or editorial dates from frontmatter (editorial mode for backdated catalogues). Sitemap submitted to GSC + Bing |
 | 8 | Internal-link quality | Catches TFIDF-distinctive-phrase trap. Recommends LLM-curated or hand-curated inline + Read-next footer |
-| 9 | Content tactics | GEO content-side levers (Princeton/Georgia Tech KDD 2024 + 2025-2026 follow-ups). Advisory; does not auto-fix prose |
+| 9 | Content tactics | GEO content-side levers (Princeton/Georgia Tech KDD 2024 + 2025-2026 follow-ups), evidence-container density, query-facet coverage. Advisory; does not auto-fix prose |
 | 10 | External backlinks | Free-tier Wayback CDX + Common Crawl + Open PageRank (with `OPR_API_KEY`). Observational, no FAIL severity |
-| 11 | Live-apex audit | Sitemap reachability, rendered-HTML JSON-LD, per-page meta drift, inline-link 404 detection, security-header consistency, discovery-artifact reachability, Screaming-Frog-parity title/H1/meta hygiene, redirect-chain audit, sitemap-vs-link reconciliation, duplicate meta-description detection, Brave Search indexability probe (Claude-citation eligibility, v1.1). Opt-in (requires live origin) |
+| 11 | Live-apex audit | Sitemap reachability, rendered-HTML JSON-LD, per-page meta drift, inline-link 404 detection, security-header consistency, discovery-artifact reachability, Screaming-Frog-parity title/H1/meta hygiene, redirect-chain audit, sitemap-vs-link reconciliation, duplicate meta-description detection, HTTP cache-validator probe, Brave Search indexability probe (Claude-citation eligibility, v1.1). Opt-in (requires live origin) |
 | 12 | Search Console cross-verification | Bing Webmaster API (GetUrlSubmissionQuota + GetCrawlStats; indexed-vs-sitemap delta, crawl errors, blocked pages). Google Search Console snapshot path (operator-exported JSON; indexed-vs-sitemap + excluded-reason taxonomy). v1.2, opt-in (network + operator-side export) |
 | 13 | Imagery provenance (C2PA / IPTC) | Reads `og:image` / `twitter:image` XMP for IPTC `digitalSourceType` (`trainedAlgorithmicMedia` / `compositeSynthetic`) + C2PA manifest markers. WARN when AI imagery declared but provenance absent (FAIL when `merchant_feed: true` — Google Merchant Center demotes non-compliant). Stdlib XMP parsing; no PIL/ExifRead. v1.3, opt-in via `ai_generated_imagery: true` |
 

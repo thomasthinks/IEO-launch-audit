@@ -111,6 +111,9 @@ CITATION_CLASS_BOTS = [
 ]
 TRAINING_CLASS_BOTS = [
     "GPTBot", "ClaudeBot", "Google-Extended", "CCBot", "Applebot-Extended",
+    # Google-Extended is a publisher-control token rather than a separate
+    # HTTP crawler. Current Google docs scope it to Gemini training and
+    # grounding controls; it does not affect Google Search inclusion or ranking.
     # v1.2.1 addition: Cohere's training-class crawler. Documented in
     # the ai-robots-txt project; previously not enumerated in the skill.
     "cohere-training-data-crawler",
@@ -222,15 +225,24 @@ def run(args) -> CheckResult:
     if missing_training:
         result.findings.append(Finding(
             id="3.3.training_class", severity="WARN",
-            title=f"{len(missing_training)} training-class bots have no explicit policy",
+            title=f"{len(missing_training)} training/grounding-class bots have no explicit policy",
             current=missing_training,
             fix_safety="safe",
-            fix_action="Add explicit Allow or Disallow per bot. Document policy decision.",
+            fix_action=(
+                "Add explicit Allow or Disallow per bot. Document policy decision. "
+                "For Google-Extended, this controls Gemini training/grounding use; "
+                "it is not a Google Search inclusion or ranking control."
+            ),
         ))
     else:
         result.findings.append(Finding(
             id="3.3.training_class", severity="PASS",
-            title=f"All {len(TRAINING_CLASS_BOTS)} training-class bots have explicit policy",
+            title=f"All {len(TRAINING_CLASS_BOTS)} training/grounding-class bots have explicit policy",
+            notes=(
+                "Google-Extended is a standalone publisher-control token for "
+                "Gemini Apps / Vertex Gemini training and grounding. Google "
+                "documents that it does not affect Search inclusion or ranking."
+            ),
         ))
 
     # 3.4 — Bytespider
@@ -387,7 +399,7 @@ def run(args) -> CheckResult:
 
     result.summary = (
         f"robots.txt: {len(CITATION_CLASS_BOTS) - len(missing_citation)}/{len(CITATION_CLASS_BOTS)} citation-class addressed, "
-        f"{len(TRAINING_CLASS_BOTS) - len(missing_training)}/{len(TRAINING_CLASS_BOTS)} training-class explicit. "
+        f"{len(TRAINING_CLASS_BOTS) - len(missing_training)}/{len(TRAINING_CLASS_BOTS)} training/grounding-class explicit. "
         f"llms.txt {'present' if llms_path else 'missing'}. "
         f"llms-full.txt {'present' if llms_full_path else 'missing'}."
     )

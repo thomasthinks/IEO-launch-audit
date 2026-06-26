@@ -43,6 +43,8 @@ Allow: /
 
 User-agent: GoogleOther
 Allow: /
+# GoogleOther is a generic Google product/R&D crawler; it is not a
+# Google Search ranking or inclusion control.
 
 User-agent: Google-NotebookLM
 Allow: /
@@ -53,10 +55,12 @@ Allow: /
 User-agent: Meta-ExternalAgent
 Allow: /
 
-# --- Training-class bots (policy: default Allow for editorial / no-paywall sites) ---
-# These crawl for training-set inclusion in foundation models.
-# Allow = the work joins LLM parametric knowledge = future citations.
-# Switch any of these to Disallow if you have paywall / proprietary content.
+# --- Training / grounding policy bots (policy: default Allow for editorial / no-paywall sites) ---
+# These control training-set inclusion and, for Google-Extended, Gemini
+# grounding use. Allow = the work may join future model knowledge or
+# grounding surfaces. Switch any of these to Disallow if you have paywall /
+# proprietary content. Google-Extended does not affect Google Search
+# inclusion or ranking.
 
 User-agent: GPTBot
 Allow: /
@@ -66,11 +70,16 @@ Allow: /
 
 User-agent: Google-Extended
 Allow: /
+# Publisher-control token for Gemini Apps / Vertex Gemini training and
+# grounding; not a separate HTTP crawler and not a Search ranking control.
 
 User-agent: CCBot
 Allow: /
 
 User-agent: Applebot-Extended
+Allow: /
+
+User-agent: cohere-training-data-crawler
 Allow: /
 
 # --- Bytespider (TikTok/ByteDance) ---

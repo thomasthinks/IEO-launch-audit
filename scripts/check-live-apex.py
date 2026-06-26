@@ -15,7 +15,7 @@ Origin priority:
 
 If no origin can be resolved the check returns NOT_APPLICABLE.
 
-Twelve phases (A-J default; K + L opt-in):
+Thirteen phases (A-J + M default; K + L opt-in):
   A. Sitemap reachability sweep (HEAD every URL; flag non-2xx / 308 drift).
   B. JSON-LD audit on home + about + N sampled pieces (parse / present /
      type-baseline). Article subtypes (NewsArticle, BlogPosting,
@@ -44,12 +44,16 @@ Twelve phases (A-J default; K + L opt-in):
      size vs baseline browser UA. Catches CDN-layer AI-bot blocks
      invisible to source-side audits (Cloudflare default-block, AWS WAF,
      etc.).
+  M. HTTP cache validators on sampled live HTML URLs. Checks ETag /
+     Last-Modified presence, parseability, suspicious uniform timestamps,
+     and broad sitemap-lastmod alignment.
 
 Phases G-J reuse the existing page + link samples (no extra apex fetches).
 """
 from __future__ import annotations
 
 import concurrent.futures
+import email.utils
 import json
 import os
 import random
@@ -154,6 +158,33 @@ def fetch(url: str, timeout: int = 30, head: bool = False):
         )
     except Exception as e:
         return 0, {}, repr(e).encode()
+
+
+def header_value(headers: dict, name: str) -> str | None:
+    """Case-insensitive header lookup for urllib header dicts."""
+    needle = name.lower()
+    for k, v in headers.items():
+        if k.lower() == needle:
+            return v
+    return None
+
+
+def parse_http_date(value: str | None):
+    if not value:
+        return None
+    try:
+        return email.utils.parsedate_to_datetime(value)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return None
+
+
+def normalize_url_key(url: str) -> str:
+    """Normalize URL enough for sitemap/header lastmod comparison."""
+    parsed = urllib.parse.urlsplit(url)
+    path = parsed.path or "/"
+    if path != "/":
+        path = path.rstrip("/")
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
 
 def extract_jsonld(html: str) -> list:
@@ -401,10 +432,15 @@ def run(args) -> CheckResult:
         ))
         return result
     urls: list[str] = []
+    sitemap_lastmods: dict[str, str] = {}
     for u in root.findall("s:url", SITEMAP_NS):
         loc = u.find("s:loc", SITEMAP_NS)
         if loc is not None and loc.text:
-            urls.append(loc.text.strip())
+            url = loc.text.strip()
+            urls.append(url)
+            lastmod = u.find("s:lastmod", SITEMAP_NS)
+            if lastmod is not None and lastmod.text:
+                sitemap_lastmods[normalize_url_key(url)] = lastmod.text.strip()
     if not urls:
         result.findings.append(Finding(
             id="11.0.sitemap_empty", severity="FAIL",
@@ -1618,6 +1654,120 @@ def run(args) -> CheckResult:
                         "blocks may still exist — this probe tests apex only.)"
                     ),
                 ))
+
+
+    # ---- Phase M: HTTP cache validators (ADR 0003) -------------------
+    # Google crawler docs explicitly document ETag / If-None-Match and
+    # Last-Modified / If-Modified-Since behavior. This phase samples live
+    # HTML URLs and reports whether crawler-facing validators are present
+    # and plausible. Advisory: static hosts vary, and missing ETag alone
+    # is not a launch blocker.
+    cache_sample_urls: list[str] = []
+    cache_sample_urls.append(f"{apex}/")
+    if about_status == 200:
+        cache_sample_urls.append(f"{apex}/about")
+    cache_sample_urls.extend(sample_pieces[: int(config.get("cache_validator_sample_size", 5) or 5)])
+    seen_cache_urls: set[str] = set()
+    cache_sample_urls = [
+        u for u in cache_sample_urls
+        if not (normalize_url_key(u) in seen_cache_urls or seen_cache_urls.add(normalize_url_key(u)))
+    ]
+
+    cache_rows: list[dict] = []
+    cache_network_errors: list[dict] = []
+    for u in cache_sample_urls:
+        code, headers, _body = fetch(u, head=True, timeout=15)
+        if code == 405:
+            code, headers, _body = fetch(u, head=False, timeout=20)
+        if code != 200:
+            cache_network_errors.append({"url": u, "status": code})
+            continue
+        etag = header_value(headers, "ETag")
+        last_modified = header_value(headers, "Last-Modified")
+        parsed_lm = parse_http_date(last_modified)
+        sitemap_lm_raw = sitemap_lastmods.get(normalize_url_key(u))
+        sitemap_lm = parse_http_date(sitemap_lm_raw)
+        delta_days = None
+        if parsed_lm and sitemap_lm:
+            delta_days = abs((parsed_lm - sitemap_lm).total_seconds()) / 86400
+        cache_rows.append({
+            "url": u,
+            "etag": bool(etag),
+            "last_modified": last_modified,
+            "last_modified_parseable": bool(parsed_lm),
+            "sitemap_lastmod": sitemap_lm_raw,
+            "lastmod_delta_days": round(delta_days, 1) if delta_days is not None else None,
+        })
+
+    if not cache_rows:
+        result.findings.append(Finding(
+            id="11.M.cache_validators", severity="MANUAL_VERIFY",
+            title="HTTP cache-validator probe could not verify any sampled live HTML URL",
+            current=cache_network_errors[:5],
+            notes="Network errors or non-200 responses prevented ETag / Last-Modified validation.",
+        ))
+    else:
+        with_etag = sum(1 for r in cache_rows if r["etag"])
+        with_lm = sum(1 for r in cache_rows if r["last_modified"])
+        parseable_lm = sum(1 for r in cache_rows if r["last_modified_parseable"])
+        missing_both = [r["url"] for r in cache_rows if not r["etag"] and not r["last_modified"]]
+        unparseable_lm = [r["url"] for r in cache_rows if r["last_modified"] and not r["last_modified_parseable"]]
+        lm_values = {r["last_modified"] for r in cache_rows if r["last_modified"]}
+        uniform_lm = len(cache_rows) >= 3 and len(lm_values) == 1
+        large_sitemap_deltas = [
+            {"url": r["url"], "days": r["lastmod_delta_days"]}
+            for r in cache_rows
+            if r["lastmod_delta_days"] is not None and r["lastmod_delta_days"] > 7
+        ]
+
+        if unparseable_lm:
+            severity = "WARN"
+            title = f"{len(unparseable_lm)} sampled live HTML URL(s) have unparseable Last-Modified headers"
+        elif missing_both:
+            severity = "WARN"
+            title = f"{len(missing_both)}/{len(cache_rows)} sampled live HTML URL(s) expose no ETag or Last-Modified"
+        elif uniform_lm:
+            severity = "WARN"
+            title = "All sampled live HTML URLs share the same Last-Modified timestamp"
+        elif large_sitemap_deltas:
+            severity = "INFO"
+            title = f"{len(large_sitemap_deltas)} sampled live HTML URL(s) differ from sitemap lastmod by >7 days"
+        elif with_etag == len(cache_rows) or with_lm == len(cache_rows):
+            severity = "PASS"
+            title = f"Sampled live HTML URLs expose cache validators ({with_etag} ETag, {with_lm} Last-Modified)"
+        else:
+            severity = "INFO"
+            title = f"Partial cache-validator coverage on sampled live HTML URLs ({with_etag} ETag, {with_lm} Last-Modified)"
+
+        result.findings.append(Finding(
+            id="11.M.cache_validators", severity=severity,
+            title=title,
+            current={
+                "sampled": len(cache_rows),
+                "with_etag": with_etag,
+                "with_last_modified": with_lm,
+                "parseable_last_modified": parseable_lm,
+                "missing_both_sample": missing_both[:5],
+                "unparseable_last_modified_sample": unparseable_lm[:5],
+                "uniform_last_modified": uniform_lm,
+                "sitemap_delta_gt_7d_sample": large_sitemap_deltas[:5],
+                "network_errors_sample": cache_network_errors[:5],
+            },
+            fix_safety="manual",
+            fix_action=(
+                "Configure the host/CDN to emit Last-Modified and/or ETag for "
+                "HTML responses. If every page shares a build-time Last-Modified, "
+                "prefer source/editorial modified dates where the platform allows. "
+                "Missing ETag alone is not a failure; Last-Modified is often enough "
+                "for static hosts."
+            ),
+            notes=(
+                "ADR 0003 / Google crawler docs: Google crawling infrastructure "
+                "uses ETag / If-None-Match and Last-Modified / If-Modified-Since. "
+                "This is a post-launch crawler-freshness hygiene probe with wide "
+                "tolerance, not a ranking claim."
+            ),
+        ))
 
     # ---- Summary ------------------------------------------------------
     counts = Counter(f.severity for f in result.findings)

@@ -141,6 +141,56 @@ Operates across the corpus (not per-piece).
 | Em-dash density within ADR-defined cap | yes | over cap |
 | Sentence-length and transition-word variance is human-like | yes | uniform |
 
+### 9.10 — Front-loaded definitional signals
+
+| Assertion | Pass | Info | Warn |
+|---|---|---|---|
+| First 30% of body text carries a declarative claim plus named-entity density | >=60% of scored pieces | 30-60% | <30% |
+
+### 9.11 — Evidence-container density
+
+ADR 0003 adds citation-absorption framing: a source being selected or
+listed is not the same as the source shaping the generated answer.
+This finding counts visible, extractable answer-support units.
+
+| Evidence-container type | Examples |
+|---|---|
+| Definitions | `X is Y`, `X means Y`, glossary-style phrasing |
+| Comparisons | `vs`, alternatives, pros/cons, comparison tables |
+| Numbers | percentages, dated amounts, named measurements |
+| Procedures | steps, workflows, checklists, ordered instructions |
+| Code / examples | code blocks, worked examples, cases |
+| Structured units | headings plus lists/tables that expose chunkable facts |
+
+| Assertion | Pass | Info | Warn |
+|---|---|---|---|
+| Scored pieces expose >=2 evidence-container types | >=60% | mixed coverage | sparse corpus-wide coverage |
+
+This is observational and advisory. It does not claim that adding a
+single definition or table causes a citation lift.
+
+### 9.12 — Query-facet coverage
+
+For broad informational pieces, the audit checks whether the page serves
+multiple likely query facets rather than overfitting one narrow intent.
+This is the static-audit translation of IF-GEO's downside-risk warning.
+
+| Facet | Examples |
+|---|---|
+| Definition | what-is / meaning / scope |
+| Comparison | alternatives, tradeoffs, vs |
+| Procedure | how-to, workflow, setup |
+| Evidence | studies, data, benchmarks, statistics |
+| Examples | cases, worked examples |
+| Limitations | caveats, risks, failure modes |
+
+| Assertion | Pass | Info | Warn |
+|---|---|---|---|
+| Broad informational pieces cover >=4 facets | >=60% | mixed/no narrow broad pages | long-form broad pages cover <=2 facets |
+
+Short essays, announcements, product pages, changelogs, and intentionally
+narrow pieces are not expected to cover every facet.
+
 ## How to fix
 
 These are content-level changes; no auto-fixable category. The script
@@ -199,6 +249,21 @@ Per-piece structural-tic detection. The fix is per-tic; see
 `docs/editorial/audits/2026-05-13-voice-drift-exceptions.md` for the
 remediation pattern used in the May 2026 audit of this repo.
 
+### Fix 9.10 / 9.11 / 9.12 — Front-loading, evidence containers, query facets
+
+For front-loading, move the load-bearing claim and named entities into
+the opening section when that improves clarity.
+
+For evidence-container gaps, add visible answer-support units only when
+true and useful: definitions, comparisons, named numbers, procedures,
+worked examples, or tables/lists. Do not add Q&A wrappers as a substitute
+for evidence.
+
+For broad-page query-facet gaps, add missing facets only when the page is
+intended to serve broad informational demand. A pillar guide may need
+definition + comparison + procedure + evidence + caveats; a short essay
+or announcement may not.
+
 ## Failure ratings
 
 This check is **advisory only**. It emits a per-piece score (0-9 of the
@@ -227,7 +292,7 @@ RED is a recommendation, not a launch block.
 
 `scripts/check-content-tactics.py`:
 1. Walks every piece body
-2. Runs the 9 sub-checks per piece via regex / structural heuristics
+2. Runs the content-tactic sub-checks per piece via regex / structural heuristics
 3. Emits per-piece scorecards + corpus-level summary
 
 This check is the most expensive (parses prose); supports `--sample N`

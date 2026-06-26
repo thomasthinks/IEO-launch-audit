@@ -124,6 +124,103 @@ _DECLARATIVE_COPULA_RE = re.compile(
     re.IGNORECASE,
 )
 
+_HEADING_RE = re.compile(
+    r"<h[23]\b[^>]*>(.*?)</h[23]>|^\s*#{2,3}\s+(.+)$",
+    re.DOTALL | re.IGNORECASE | re.MULTILINE,
+)
+
+
+def extract_headings(text: str) -> list[str]:
+    """Return visible H2/H3-ish headings from HTML/TSX/Markdown."""
+    headings: list[str] = []
+    for html_h, md_h in _HEADING_RE.findall(text):
+        raw = html_h or md_h
+        cleaned = re.sub(r"<[^>]+>", " ", raw)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        if cleaned:
+            headings.append(cleaned)
+    return headings
+
+
+def evidence_container_types(text: str, body: str) -> set[str]:
+    """Detect extractable answer-support units from visible-ish content.
+
+    These are observational citation-absorption features from 2026 GEO
+    research, not causal guarantees.
+    """
+    combined = f"{body}\n{text}"
+    headings = extract_headings(text)
+    heading_blob = " ".join(headings)
+    found: set[str] = set()
+    if re.search(
+        r"\b([A-Z][\w\- ]{1,60}\s+)?(is|are|means|refers\s+to|is\s+defined\s+as)\b",
+        body,
+        re.IGNORECASE,
+    ):
+        found.add("definitions")
+    if (
+        re.search(r"\b(vs\.?|versus|compared\s+with|compared\s+to|alternative[s]?|pros\s+and\s+cons)\b", combined, re.IGNORECASE)
+        or re.search(r"\b(compare|comparison|alternatives?|tradeoffs?|pros|cons)\b", heading_blob, re.IGNORECASE)
+        or re.search(r"<table[\s>]", text, re.IGNORECASE)
+    ):
+        found.add("comparisons")
+    if re.search(
+        r"(\b\d+(?:\.\d+)?%\b|\b\d+(?:,\d{3})+(?:\.\d+)?\b|\$\d|"
+        r"\b\d+(?:\.\d+)?\s*(million|billion|seconds?|minutes?|hours?|days?|months?|years?)\b)",
+        body,
+        re.IGNORECASE,
+    ):
+        found.add("numbers")
+    if (
+        re.search(r"\b(step\s+\d+|first,|second,|third,|finally,|how\s+to|checklist|workflow)\b", combined, re.IGNORECASE)
+        or re.search(r"<ol[\s>]", text, re.IGNORECASE)
+    ):
+        found.add("procedures")
+    if re.search(r"```|<pre[\s>]|<code[\s>]", text, re.IGNORECASE):
+        found.add("code_examples")
+    if len(headings) >= 3 and (re.search(r"<ul[\s>]|<ol[\s>]", text, re.IGNORECASE) or body.count(";") >= 3):
+        found.add("structured_units")
+    return found
+
+
+def query_facets(text: str, body: str) -> set[str]:
+    """Infer broad query facets a page visibly serves."""
+    headings = extract_headings(text)
+    heading_blob = " ".join(headings)
+    combined = f"{heading_blob}\n{body}"
+    facets: set[str] = set()
+    if re.search(r"\b(what\s+is|what\s+are|definition|means|refers\s+to|is\s+a|is\s+an)\b", combined, re.IGNORECASE):
+        facets.add("definition")
+    if re.search(r"\b(compare|comparison|versus|vs\.?|alternative|pros\s+and\s+cons|tradeoff)\b", combined, re.IGNORECASE):
+        facets.add("comparison")
+    if re.search(r"\b(how\s+to|steps?|workflow|process|checklist|implement|setup|configure)\b", combined, re.IGNORECASE):
+        facets.add("procedure")
+    if re.search(r"\b(data|evidence|study|research|benchmark|statistics?|%|\d+(?:,\d{3})+)\b", combined, re.IGNORECASE):
+        facets.add("evidence")
+    if re.search(r"\b(example|case study|for instance|such as)\b", combined, re.IGNORECASE):
+        facets.add("examples")
+    if re.search(r"\b(caveat|limitation|risk|failure mode|tradeoff|however|but)\b", combined, re.IGNORECASE):
+        facets.add("limitations")
+    return facets
+
+
+def is_broad_informational_piece(path: Path, text: str, body: str) -> bool:
+    """Gate query-facet warnings to pages that look like broad resources."""
+    words = len(body.split())
+    if words < 900:
+        return False
+    name = path.name.lower()
+    if any(token in name for token in ("changelog", "release", "announcement", "note")):
+        return False
+    if re.search(r"\b(product|pricing|terms|privacy)\b", name):
+        return False
+    titleish = " ".join(extract_headings(text)[:2])
+    return (
+        words >= 1400
+        or "/pillar/" in str(path)
+        or re.search(r"\b(guide|playbook|framework|overview|complete|ultimate|primer)\b", titleish, re.IGNORECASE)
+    )
+
 
 def front_loading_signals(body: str) -> tuple[bool, int]:
     """Compute front-loading signals over the first 30% of body text.
@@ -194,6 +291,15 @@ def run(args) -> CheckResult:
     pieces_with_claim = 0
     pieces_with_entity_density = 0   # ≥2 entities in first 30%
     front_loading_scored = 0      # pieces with ≥60w body (denominator)
+    # ADR 0003 — citation-absorption / multi-query stability signals.
+    evidence_scored = 0
+    evidence_strong = 0
+    evidence_mixed = 0
+    evidence_type_counts: dict[str, int] = {}
+    query_facet_scored = 0
+    query_facet_strong = 0
+    query_facet_narrow: list[str] = []
+    query_facet_counts: dict[str, int] = {}
 
     total = len(pieces)
     for p in pieces:
@@ -235,6 +341,26 @@ def run(args) -> CheckResult:
                 pieces_with_entity_density += 1
             if has_claim and entity_count >= 2:
                 front_loaded_pieces += 1
+
+        if body and len(body.split()) >= 150:
+            evidence_scored += 1
+            evidence_types = evidence_container_types(text, body)
+            for t in evidence_types:
+                evidence_type_counts[t] = evidence_type_counts.get(t, 0) + 1
+            if len(evidence_types) >= 2:
+                evidence_strong += 1
+            elif len(evidence_types) == 1:
+                evidence_mixed += 1
+
+        if body and is_broad_informational_piece(p, text, body):
+            query_facet_scored += 1
+            facets = query_facets(text, body)
+            for facet in facets:
+                query_facet_counts[facet] = query_facet_counts.get(facet, 0) + 1
+            if len(facets) >= 4:
+                query_facet_strong += 1
+            elif len(facets) <= 2:
+                query_facet_narrow.append(p.name)
 
     # Translate to findings
     def pct(n: int) -> float:
@@ -358,6 +484,109 @@ def run(args) -> CheckResult:
                 "AIO with disclosed methodology. PASS ≥60%, INFO 30-60%, WARN "
                 "<30% of pieces front-loaded. Heuristic only — entity density "
                 "uses title-cased phrase proxy, not full NER."
+            ),
+        ))
+
+    # 9.11 — Evidence-container density (ADR 0003).
+    #
+    # April 2026 citation-absorption research separates source selection
+    # from answer-level influence. Pages with higher observed influence
+    # are richer in extractable support units: definitions, numerical
+    # facts, comparison content, procedural steps, code/examples, and
+    # clear structure. This is advisory and observational; do not claim
+    # causal lift from adding any one feature.
+    if evidence_scored > 0:
+        pct_strong = evidence_strong * 100 / evidence_scored
+        pct_partial = (evidence_strong + evidence_mixed) * 100 / evidence_scored
+        if pct_strong >= 60:
+            severity = "PASS"
+        elif pct_partial >= 60:
+            severity = "INFO"
+        else:
+            severity = "WARN"
+        result.findings.append(Finding(
+            id="9.11.evidence_container_density", severity=severity,
+            title=(
+                f"{evidence_strong}/{evidence_scored} ({pct_strong:.0f}%) "
+                "scored pieces expose ≥2 extractable evidence-container types"
+            ),
+            current={
+                "pieces_with_at_least_one_type": (
+                    f"{evidence_strong + evidence_mixed}/{evidence_scored} "
+                    f"({pct_partial:.0f}%)"
+                ),
+                "type_counts": dict(sorted(evidence_type_counts.items())),
+                "types_tested": [
+                    "definitions",
+                    "comparisons",
+                    "numbers",
+                    "procedures",
+                    "code_examples",
+                    "structured_units",
+                ],
+            },
+            fix_safety="manual",
+            fix_action=(
+                "For sparse pieces, add visible answer-support units only "
+                "where editorially true: definitions, comparison sections, "
+                "named numbers/statistics, procedural steps, worked examples, "
+                "or list/table structure. Do not add Q&A wrappers as a "
+                "substitute for evidence."
+            ),
+            notes=(
+                "ADR 0003 / arXiv:2604.25707: citation selection and "
+                "citation absorption differ. High-influence cited pages were "
+                "observationally richer in extractable evidence units. This "
+                "finding is an advisory structural proxy, not a causal "
+                "ranking claim."
+            ),
+        ))
+
+    # 9.12 — Query-facet coverage / downside-risk advisory (ADR 0003).
+    #
+    # IF-GEO and related 2026 work warn that optimizing for one query can
+    # degrade adjacent intents. Static audit proxy: broad informational
+    # pages should usually expose several visible query facets rather than
+    # serving only one narrow intent.
+    if query_facet_scored > 0:
+        pct_strong = query_facet_strong * 100 / query_facet_scored
+        if pct_strong >= 60:
+            severity = "PASS"
+        elif query_facet_narrow:
+            severity = "WARN"
+        else:
+            severity = "INFO"
+        result.findings.append(Finding(
+            id="9.12.query_facet_coverage", severity=severity,
+            title=(
+                f"{query_facet_strong}/{query_facet_scored} ({pct_strong:.0f}%) "
+                "broad informational pieces cover ≥4 query facets"
+            ),
+            current={
+                "facet_counts": dict(sorted(query_facet_counts.items())),
+                "narrow_broad_pages_sample": query_facet_narrow[:10],
+                "facets_tested": [
+                    "definition",
+                    "comparison",
+                    "procedure",
+                    "evidence",
+                    "examples",
+                    "limitations",
+                ],
+            },
+            fix_safety="manual",
+            fix_action=(
+                "For broad guide or pillar pages that are narrow, add missing "
+                "facets only when useful to readers: definition, comparison, "
+                "procedure, evidence, examples, and limitations/caveats. "
+                "Short essays, announcements, product pages, changelogs, and "
+                "intentionally narrow pieces are not expected to cover every facet."
+            ),
+            notes=(
+                "ADR 0003 / IF-GEO: multi-query stability matters because "
+                "single-query edits can create downside risk for adjacent "
+                "intents. This is an INFO-first structural proxy; it does not "
+                "run live LLM probes or claim each page needs every facet."
             ),
         ))
 

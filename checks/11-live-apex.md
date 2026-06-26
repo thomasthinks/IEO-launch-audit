@@ -25,6 +25,8 @@ cannot see what the live origin actually serves:
   `/image-sitemap.xml`, IndexNow keyfile) that exist in `dist/` but
   404 at the apex because the host's static-rewrite rules don't catch
   them.
+- HTTP cache validators (`ETag`, `Last-Modified`) that crawlers use for
+  recrawl freshness, but that source-side checks cannot observe.
 
 External auditors (Screaming Frog, Sitebulb, Ahrefs Site Audit, GSC
 URL Inspection) all hit the live origin. Check 11 surfaces the same
@@ -243,6 +245,18 @@ api.search.brave.com). When unconfigured, phase K emits a single INFO
 and skips. Findings are advisory only (INFO/PASS/MV); never FAIL —
 search-engine visibility is emergent and noisy.
 
+### 11.M — HTTP cache validators
+
+| Assertion | Pass | Info | Warn | Manual-verify |
+|---|---|---|---|---|
+| Sampled live HTML URLs expose `ETag` or `Last-Modified` | full coverage | partial coverage / sitemap delta >7d | no validators / uniform timestamp / unparseable `Last-Modified` | sample fetch failed |
+
+This phase samples home, about when present, and up to 5 sampled piece
+URLs. It compares live `Last-Modified` with sitemap `<lastmod>` when both
+are available, using wide tolerance. Missing `ETag` alone is not a
+failure; many static hosts rely on `Last-Modified` plus immutable asset
+hashes.
+
 ## What this catches vs the internal audit (checks 1-10)
 
 | Class of issue | Internal (1-10) | Live (11) |
@@ -260,6 +274,7 @@ search-engine visibility is emergent and noisy.
 | Apparent orphan pages (sitemap-vs-link-graph drift) | no | yes |
 | Duplicate meta descriptions across pages | no | yes |
 | Brave Search indexability (Claude-citation eligibility) | no | yes (opt-in) |
+| HTTP cache validators on live HTML | no | yes |
 
 The two are complementary. Run 1-10 during development to catch
 source-side issues fast; run 11 against the live origin to catch what
@@ -298,6 +313,7 @@ Read from `.launch-readiness.yml`:
 | `live_probe_origin` | string URL | — | Apex to audit (preferred) |
 | `canonical_origin` | string URL | — | Apex fallback |
 | `indexnow_key` | string | unset | If set, additionally probes `/<key>.txt` in phase F |
+| `cache_validator_sample_size` | integer | 5 | Piece URLs sampled for phase M beyond home/about |
 
 If neither origin key is set and `--apex` is not passed, the check
 returns a single `NOT_APPLICABLE` finding and exits.
@@ -316,9 +332,12 @@ returns a single `NOT_APPLICABLE` finding and exits.
   single redirect hop; internal-link target absent from sitemap;
   meta-description duplicated across pages; security-header values
   inconsistent across pages; `/llms.txt` or `/image-sitemap.xml` not
-  served at apex.
+  served at apex; live HTML missing cache validators or exposing a
+  suspicious uniform / unparseable `Last-Modified` header.
 - **INFO:** sitemap URLs that aren't linked from the sampled corpus
-  (apparent orphans; sample-bounded so mostly false-positive).
+  (apparent orphans; sample-bounded so mostly false-positive); partial
+  cache-validator coverage or live/sitemap `lastmod` drift above the
+  advisory tolerance.
 - **NOT_APPLICABLE:** no live origin configured.
 - **PASS:** everything else.
 
@@ -373,6 +392,16 @@ home) instead of `/(.*)` (matches all routes). Fix:
 
 **Auto-fix safety: manual** (host config).
 
+### Fix 11.M — Missing or suspicious cache validators
+
+Configure the host/CDN to emit `Last-Modified` and/or `ETag` for HTML
+responses. If every page shares a build-time `Last-Modified`, prefer
+source/editorial modified dates where the platform allows. Do not treat
+missing `ETag` alone as a blocker; `Last-Modified` is often enough for
+static hosts.
+
+**Auto-fix safety: manual** (host/CDN behavior).
+
 ## Implementation notes
 
 `scripts/check-live-apex.py`:
@@ -396,10 +425,13 @@ home) instead of `/(.*)` (matches all routes). Fix:
    phases.
 8. Phase H follows redirects manually via a `_NoRedirect` opener so
    hop count is observable; cap is `REDIRECT_MAX_HOPS = 5`.
+9. Phase M samples live HTML headers for `ETag` / `Last-Modified` and
+   uses wide-tolerance sitemap `<lastmod>` comparison when available.
 
 ## Cited research
 
 - [Google Search Central — Sitemaps overview](https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview)
+- [Google crawler overview — cache validators](https://developers.google.com/crawling/docs/crawlers-fetchers/overview-google-crawlers)
 - [Schema.org — Article hierarchy](https://schema.org/Article) (NewsArticle, BlogPosting, ScholarlyArticle subtypes)
 - [Google Search Central — Robots meta](https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag)
 - [MDN — Canonical link element](https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel/canonical)
