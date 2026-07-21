@@ -194,3 +194,8 @@ positives; consider tagging the next research pass for ~September 2026
 (post the 2026-09-15 Cloudflare default change). Full subagent reports
 live only in the session transcript — this file + ADR 0004 are the
 durable record.
+
+Open loose end: `.claude/CLAUDE.md` and `.portfolio-config.yml` sit
+untracked at repo root (pre-existing, not authored this session; left
+out of the public push deliberately). TJ to decide: commit, gitignore,
+or leave.
