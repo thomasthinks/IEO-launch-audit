@@ -133,6 +133,10 @@ survives platform migrations and rebuilds.
 - [Google Search Central — Sitemaps](https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview)
 - [sitemap.xml protocol (sitemaps.org)](https://www.sitemaps.org/protocol.html)
 - [Google: lastmod trust requires correlation with content changes (2023)](https://www.seroundtable.com/google-on-sitemap-lastmod-35920.html)
+- [Illyes: unreliable lastmods → drop the column (2026-07-16)](https://www.seroundtable.com/google-lastmod-dates-incorrect-41697.html)
+  — lastmod trust is binary per sitemap: Google either trusts the whole
+  column or ignores it. Removing lastmod outright is a legitimate fix
+  when per-page accuracy can't be maintained (ADR 0004).
 
 ## Implementation notes
 

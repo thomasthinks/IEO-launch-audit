@@ -222,6 +222,101 @@ def is_broad_informational_piece(path: Path, text: str, body: str) -> bool:
     )
 
 
+# ADR 0004 — 9.13 prompt-injection / hidden-instruction detection.
+#
+# Adversarial answer-engine markup: text aimed at the LLM reading the
+# page rather than the human. Conservative by design — flags
+# instruction-SHAPED hidden text, not all hidden text, so legitimate
+# presentational hiding (menus, toggles) doesn't false-positive.
+_LLM_INSTRUCTION_RE = re.compile(
+    r"(ignore\s+(all\s+)?(previous|prior|above)\s+instructions?"
+    r"|you\s+are\s+an?\s+(ai|llm|language\s+model|assistant)"
+    r"|system\s+prompt"
+    r"|do\s+not\s+(mention|cite|reveal|disclose)"
+    r"|when\s+summariz\w+\s+this\s+(page|site|article)"
+    r"|(always|instead,?\s*)\s*(recommend|cite|link\s+to)\s+)",
+    re.IGNORECASE,
+)
+_HIDDEN_BLOCK_RE = re.compile(
+    r"<[^>]*(?:style=[\"'][^\"']*(?:display:\s*none|visibility:\s*hidden"
+    r"|font-size:\s*0|opacity:\s*0(?:\.0+)?[;\"'])[^\"']*[\"']"
+    r"|aria-hidden=[\"']true[\"'])[^>]*>(.{40,}?)</",
+    re.IGNORECASE | re.DOTALL,
+)
+_HTML_COMMENT_RE = re.compile(r"<!--(.*?)-->", re.DOTALL)
+# Zero-width / invisible Unicode: ZWSP..RLM, word-joiner range, BOM.
+_INVISIBLE_UNICODE_RE = re.compile("[\\u200b-\\u200f\\u2060-\\u2064\\ufeff]")
+
+
+def prompt_injection_hits(text: str) -> list[str]:
+    """Return human-readable descriptions of injection-shaped content."""
+    hits: list[str] = []
+    for comment in _HTML_COMMENT_RE.findall(text):
+        if _LLM_INSTRUCTION_RE.search(comment):
+            hits.append(f"LLM-instruction phrase in HTML comment: {comment.strip()[:80]!r}")
+    for hidden in _HIDDEN_BLOCK_RE.findall(text):
+        plain = re.sub(r"<[^>]+>", " ", hidden)
+        if _LLM_INSTRUCTION_RE.search(plain):
+            hits.append(f"LLM-instruction phrase in hidden/aria-hidden block: {plain.strip()[:80]!r}")
+    invisible = len(_INVISIBLE_UNICODE_RE.findall(text))
+    if invisible > 20:
+        hits.append(f"{invisible} zero-width/invisible Unicode characters (possible hidden payload)")
+    return hits
+
+
+# ADR 0004 — 9.14 negative-citation signals: patterns 2026 evidence says
+# backfire (CTA overload, repeated-term stuffing).
+_CTA_RE = re.compile(
+    r"\b(sign\s+up|buy\s+now|subscribe|get\s+started|book\s+a\s+demo"
+    r"|start\s+(your\s+)?free\s+trial|contact\s+us\s+today|limited\s+time)\b",
+    re.IGNORECASE,
+)
+
+
+def cta_density(body: str) -> float:
+    """CTA phrases per 1000 words."""
+    words = len(body.split()) or 1
+    return len(_CTA_RE.findall(body)) / words * 1000
+
+
+def top_term_share(body: str) -> tuple[str, float]:
+    """Most frequent non-stopword term and its share of all words (%).
+
+    A crude stuffing proxy: >4% of body words being one content term is
+    unusual for natural prose.
+    """
+    stop = {
+        "the", "and", "for", "that", "with", "this", "you", "your", "are",
+        "was", "were", "have", "has", "had", "not", "but", "can", "will",
+        "from", "they", "their", "them", "its", "it's", "when", "what",
+        "how", "why", "who", "which", "than", "then", "there", "here",
+        "into", "onto", "over", "under", "about", "more", "most", "some",
+        "all", "also", "just", "like", "one", "two", "our", "out", "use",
+    }
+    words = [w.lower().strip(".,;:!?\"'()[]") for w in body.split()]
+    words = [w for w in words if len(w) >= 3 and w not in stop]
+    if len(words) < 100:
+        return "", 0.0
+    freq: dict[str, int] = {}
+    for w in words:
+        freq[w] = freq.get(w, 0) + 1
+    term, n = max(freq.items(), key=lambda kv: kv[1])
+    return term, n * 100 / len(words)
+
+
+# ADR 0004 — 9.15 dated-currency language ("as of Q3 2026", "updated
+# March 2026"). Explicit currency markers correlated with citation in
+# July 2026 industry syntheses; advisory only.
+_DATED_CURRENCY_RE = re.compile(
+    r"\b(as\s+of\s+(early\s+|mid-?\s*|late\s+)?(q[1-4]\s+)?(19|20)\d{2}"
+    r"|as\s+of\s+(january|february|march|april|may|june|july|august"
+    r"|september|october|november|december)\s+(19|20)\d{2}"
+    r"|(updated|last\s+updated|current\s+as\s+of|reviewed)\s*(:|\s+in|\s+on)?\s+"
+    r"[a-z]*\s*(19|20)\d{2})",
+    re.IGNORECASE,
+)
+
+
 def front_loading_signals(body: str) -> tuple[bool, int]:
     """Compute front-loading signals over the first 30% of body text.
 
@@ -300,6 +395,13 @@ def run(args) -> CheckResult:
     query_facet_strong = 0
     query_facet_narrow: list[str] = []
     query_facet_counts: dict[str, int] = {}
+    # ADR 0004 — 9.13/9.14/9.15 aggregates.
+    injection_hits_by_piece: list[tuple[str, list[str]]] = []
+    cta_densities: list[float] = []
+    stuffing_flagged: list[tuple[str, str, float]] = []  # (piece, term, share%)
+    negative_signal_scored = 0
+    dated_currency_pieces = 0
+    dated_currency_scored = 0
 
     total = len(pieces)
     for p in pieces:
@@ -362,6 +464,23 @@ def run(args) -> CheckResult:
             elif len(facets) <= 2:
                 query_facet_narrow.append(p.name)
 
+        # ADR 0004 — 9.13 prompt-injection scan runs on RAW text (hidden
+        # markup is by definition outside extracted body text).
+        hits = prompt_injection_hits(text)
+        if hits:
+            injection_hits_by_piece.append((p.name, hits))
+
+        # ADR 0004 — 9.14/9.15 body-side signals.
+        if body and len(body.split()) >= 150:
+            negative_signal_scored += 1
+            cta_densities.append(cta_density(body))
+            term, share = top_term_share(body)
+            if share > 4.0:
+                stuffing_flagged.append((p.name, term, round(share, 1)))
+            dated_currency_scored += 1
+            if _DATED_CURRENCY_RE.search(body):
+                dated_currency_pieces += 1
+
     # Translate to findings
     def pct(n: int) -> float:
         return n * 100 / total if total else 0
@@ -375,7 +494,10 @@ def run(args) -> CheckResult:
             fix_safety="manual",
             notes=(
                 "Advisory; this check does not block flip. " +
-                ("Per Princeton/Georgia Tech KDD 2024 + 2026 followups, these tactics correlate with LLM citation lift." if tactic in ("inline_citation", "quotation", "firstparty_data") else "")
+                ("Per Princeton/Georgia Tech KDD 2024 + 2026 followups, these tactics correlate with LLM citation lift. "
+                 "Caution (ADR 0004, 2026-07 critical survey of 45 studies): such gains are stage-local — "
+                 "over-optimizing body content for citation has been measured to REDUCE retrieval presence 9-16%; "
+                 "apply only where editorially true." if tactic in ("inline_citation", "quotation", "firstparty_data") else "")
             ),
         ))
 
@@ -590,6 +712,95 @@ def run(args) -> CheckResult:
             ),
         ))
 
+    # 9.13 — Prompt-injection / hidden-instruction detection (ADR 0004).
+    #
+    # Adversarial answer-engine markup is an emerging spam signal for
+    # AI-citation trackers and crawler operators. Conservative patterns:
+    # instruction-shaped text in HTML comments / hidden-styled blocks /
+    # aria-hidden blocks, plus abnormal invisible-Unicode density.
+    if injection_hits_by_piece:
+        result.findings.append(Finding(
+            id="9.13.prompt_injection", severity="WARN",
+            title=(
+                f"{len(injection_hits_by_piece)}/{total} pieces contain "
+                "injection-shaped hidden content aimed at AI readers"
+            ),
+            current={name: hits for name, hits in injection_hits_by_piece[:10]},
+            fix_safety="manual",
+            fix_action=(
+                "Remove LLM-directed instructions from comments, hidden "
+                "blocks, and aria-hidden markup. If flagged text is "
+                "legitimate (e.g. a blog post ABOUT prompt injection "
+                "quoting examples), verify manually and ignore."
+            ),
+            notes=(
+                "ADR 0004. Patterns flag instruction-SHAPED hidden text "
+                "only, not all hidden text. False-positive risk on content "
+                "that discusses prompt injection — hence WARN, not FAIL."
+            ),
+        ))
+    else:
+        result.findings.append(Finding(
+            id="9.13.prompt_injection", severity="PASS",
+            title="No injection-shaped hidden content detected across corpus",
+        ))
+
+    # 9.14 — Negative-citation signals (ADR 0004): CTA overload +
+    # repeated-term stuffing. 2026 evidence (critical survey + peer
+    # tooling) treats these as patterns that backfire in AI retrieval.
+    if negative_signal_scored > 0:
+        avg_cta = sum(cta_densities) / len(cta_densities)
+        problems = bool(stuffing_flagged) or avg_cta > 5
+        result.findings.append(Finding(
+            id="9.14.negative_citation_signals",
+            severity="INFO" if problems else "PASS",
+            title=(
+                f"Negative-signal scan: avg CTA density {avg_cta:.1f}/1000w; "
+                f"{len(stuffing_flagged)}/{negative_signal_scored} pieces "
+                "flag term-repetition >4%"
+            ),
+            current={"stuffing_sample": stuffing_flagged[:8]} if stuffing_flagged else None,
+            fix_safety="manual",
+            fix_action=(
+                "For flagged pieces: vary phrasing where one term dominates "
+                ">4% of body words; keep CTA phrasing out of informational "
+                "body copy. Both patterns read as promotional/stuffed to "
+                "retrieval-stage filters."
+            ) if problems else None,
+            notes=(
+                "Advisory only. Keyword-stuffing-style tactics measurably "
+                "hurt position-adjusted visibility in 2026 GEO benchmarks; "
+                "the >4% single-term share and >5 CTA/1000w thresholds are "
+                "conservative heuristics, not published cutoffs."
+            ),
+        ))
+
+    # 9.15 — Dated-currency language (ADR 0004). Explicit "as of <date>"
+    # / "updated <date>" markers in body copy correlated with AI citation
+    # in July 2026 industry syntheses. Advisory; sitemap/meta freshness
+    # is audited elsewhere — this is the visible-text layer.
+    if dated_currency_scored > 0:
+        pct_dated = dated_currency_pieces * 100 / dated_currency_scored
+        result.findings.append(Finding(
+            id="9.15.dated_currency", severity="INFO",
+            title=(
+                f"{dated_currency_pieces}/{dated_currency_scored} "
+                f"({pct_dated:.0f}%) pieces carry explicit dated-currency "
+                "language in body text"
+            ),
+            fix_safety="manual",
+            fix_action=(
+                "Where accuracy allows, add visible currency markers to "
+                "evergreen pieces ('as of Q3 2026', 'updated March 2026'). "
+                "Only where true — a fake freshness stamp is worse than none."
+            ),
+            notes=(
+                "Correlational evidence only (Ahrefs/Previsible July 2026 "
+                "syntheses: dated language among citation correlates). "
+                "Advisory; never a gate."
+            ),
+        ))
+
     # 9.fanout — Query Fan-Out retrievability proxy (v1.3).
     #
     # Google AI Mode decomposes user queries into 5-11+ sub-queries (Google
@@ -702,7 +913,14 @@ def run(args) -> CheckResult:
                 "Central + I/O 2025 confirm the mechanism; Surfer 173,902-URL "
                 "+ Ahrefs Feb 2026 confirm 62-68% of AIO citations rank "
                 "outside the parent query's top-10. For true fan-out audits, "
-                "see 9.fanout.advisory."
+                "see 9.fanout.advisory. Caveat (ADR 0004, Search Central "
+                "Live Milan 2026-06): 'forcing paragraph chunking for AI is "
+                "useless; content organization must follow human readability "
+                "criteria' — treat these signals as readability-first "
+                "structure, not AI-targeted chunking. July 2026 correlate: "
+                "direct Q&A shape (question heading + concise answer) among "
+                "citation correlates as AIO citations from top-10 organic "
+                "fell 76%→38% over 8 months."
             ),
         ))
 

@@ -16,6 +16,18 @@ that schema increases citation *accuracy* (when cited, cited correctly),
 which is what an editorial site wants — Person-entity disambiguation,
 correct topic attribution, accurate cross-reference threading.
 
+**2026-07 update (ADR 0004) — the null result now has a controlled
+design.** Ahrefs ran a matched difference-in-differences study (1,885
+pages that added JSON-LD vs ~4,000 controls): −4.6% AI Overviews /
++2.4% AI Mode / +2.2% ChatGPT, none significant except the small AIO
+decline. Proposed mechanism: AI retrieval extracts visible rendered
+HTML at citation-selection time; hidden JSON-LD isn't read there. This
+strengthens the stance above — schema is for rich results, entity
+graphs, and citation *accuracy*, not a citation-frequency lever. A
+SIGIR '26 252K-trial factorial study points the same way: relevance and
+retrieved-context position dominate citation odds; content-side factors
+are second-order.
+
 **2026-05 update — Google "AI features" tension surface.** Google's
 [AI optimization
 guide](https://developers.google.com/search/docs/fundamentals/ai-optimization-guide)
@@ -113,9 +125,12 @@ deprecated earlier (2023). Sites emitting these expecting visual
 rich-result UI in Google SERP get nothing.
 
 **IEO / GEO side:** ChatGPT Search, Perplexity, Claude web search, and
-AI Overviews still **parse FAQPage / HowTo for Q&A extraction**. The
-schema types remain load-bearing for AI-engine citation. The audit
-should NOT flag these as deprecated.
+AI Overviews still **parse FAQPage / HowTo for Q&A extraction** where
+the equivalent text is visible in HTML. The types remain valid
+vocabulary and the audit should NOT flag them as deprecated — but per
+the 2026-07 evidence update below, do not frame them as a demonstrated
+citation-*frequency* lever; their residual value is extraction/accuracy
+framing plus non-Google engine parsing.
 
 When the consumer emits FAQPage or HowTo nodes:
 - Do not WARN on schema-deprecation grounds.
@@ -389,6 +404,13 @@ extraction.
 - [Google Updates Image Structured Data (creditText, creator, copyrightNotice)](https://www.searchenginejournal.com/google-updates-image-structured-data/467786/)
 - [schema.org hasOccupation](https://schema.org/hasOccupation)
 - [Wikidata:Schema.org](https://www.wikidata.org/wiki/Wikidata:Schema.org)
+- Ahrefs schema/AI-citation matched-control study (2026-05, curated
+  [here](https://authoritytech.io/curated/schema-markup-ai-citations-ahrefs-study-2026)):
+  1,885 treated + ~4,000 control pages, diff-in-diff; no significant
+  citation uplift from adding JSON-LD (ADR 0004).
+- [What Gets Cited: Competitive GEO in AI Answer Engines](https://doi.org/10.1145/3805712.3808445)
+  (SIGIR '26): 252K trials; relevance + context position dominate
+  citation; content factors second-order (ADR 0004).
 
 ## Implementation notes
 

@@ -88,3 +88,9 @@ Allow: /
 
 User-agent: Bytespider
 Disallow: /
+
+# --- Content-Signal (optional; Cloudflare convention, 2026-07) ---
+# Declares AI-usage policy: search= / ai-train= / use= (immediate |
+# reference | full). Cloudflare-managed robots.txt auto-injects one.
+# Not a standard; no known ranking/citation effect. Uncomment to adopt:
+# Content-Signal: search=yes, ai-train=no, use=reference

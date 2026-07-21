@@ -3,7 +3,7 @@ name: IEO-launch-audit
 description: Pre-launch + post-launch SEO / IEO / GEO audit for a static or SSG site. Audits 14 categories (technical SEO, Schema.org graph, AI-bot directives, Core Web Vitals, Wikidata entity graph, IndexNow, sitemap accuracy, internal-link quality, content tactics, external backlinks, live-apex behavior, Search Console cross-verification, imagery provenance, multimodal markup) and reports gaps with concrete fixes. Designed to catch what external audits (Screaming Frog, Sitebulb, Lighthouse, Schema Markup Validator, Google Rich Results Test, AI-citation trackers) will flag, before they flag it. Pre-launch use: run before pointing the apex domain at a build. Post-launch use: opt-in checks 11 (live-apex) + 12 (Bing API + GSC snapshot) + 13 (AI-imagery XMP) + 14 (multimodal markup) verify behavior + indexing-state + provenance + DOM-side semantic markup the source-side checks can't see. Use when launching a content site, when running readiness checks on someone else's site, or as a recurring health check post-launch.
 metadata:
   priority: 7
-  version: 1.8.0
+  version: 1.9.0
   docs:
     - "https://developers.google.com/search/docs/fundamentals/seo-starter-guide"
     - "https://schema.org/Article"
@@ -232,6 +232,11 @@ script in `scripts/`), and records the result.
 Two artifacts:
 - `<repo>/.launch-readiness-report.md` — human-readable report
 - `<repo>/.launch-readiness-report.json` — machine-readable for CI gating
+
+Optional third artifact (v1.9.0): `python3 scripts/emit-fix-prompts.py
+--repo <repo>` converts the report JSON into
+`<repo>/.launch-readiness-fixes.md` — one copy-paste LLM remediation
+prompt per actionable WARN/FAIL finding, FAIL-first.
 
 Report structure:
 ```

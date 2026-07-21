@@ -1,0 +1,499 @@
+{
+ "_source": "https://github.com/ai-robots-txt/ai.robots.txt (robots.json)",
+ "_snapshot_date": "2026-07-21",
+ "_refresh": "curl -sSL https://raw.githubusercontent.com/ai-robots-txt/ai.robots.txt/main/robots.json | python3 -c \"import json,sys; d=json.load(sys.stdin); print(json.dumps({'_source':'https://github.com/ai-robots-txt/ai.robots.txt (robots.json)','_snapshot_date':'YYYY-MM-DD','_refresh':'(this command)','agents':{k:{'function':v.get('function','')} for k,v in d.items()}},indent=1))\" > references/ai-robots-registry.json",
+ "agents": {
+  "AddSearchBot": {
+   "function": "AI Search Crawlers"
+  },
+  "AgentTimes": {
+   "function": "Data Scraper from RSS Feeds."
+  },
+  "AI2Bot": {
+   "function": "Content is used to train open language models."
+  },
+  "AI2Bot-DeepResearchEval": {
+   "function": "AI Assistants"
+  },
+  "Ai2Bot-Dolma": {
+   "function": "Content is used to train open language models."
+  },
+  "aiHitBot": {
+   "function": "A massive, artificial intelligence/machine learning, automated system."
+  },
+  "AIWebIndex": {
+   "function": "AI Data Providers"
+  },
+  "amazon-kendra": {
+   "function": "Collects data for AI natural language search"
+  },
+  "amazon-QBusiness": {
+   "function": "AI Assistants"
+  },
+  "Amazonbot": {
+   "function": "Service improvement and enabling answers for Alexa users."
+  },
+  "AmazonBuyForMe": {
+   "function": "AI Agents"
+  },
+  "Amzn-SearchBot": {
+   "function": "AI Search Crawlers"
+  },
+  "Amzn-User": {
+   "function": "AI Assistants"
+  },
+  "Andibot": {
+   "function": "Search engine using generative AI, AI Search Assistant"
+  },
+  "Anomura": {
+   "function": "Collects data for AI search"
+  },
+  "anthropic-ai": {
+   "function": "Scrapes data to train Anthropic's AI products."
+  },
+  "ApifyBot": {
+   "function": "AI Data Providers"
+  },
+  "ApifyWebsiteContentCrawler": {
+   "function": "AI Data Providers"
+  },
+  "Applebot": {
+   "function": "AI Search Crawlers"
+  },
+  "Applebot-Extended": {
+   "function": "Powers features in Siri, Spotlight, Safari, Apple Intelligence, and others."
+  },
+  "Aranet-SearchBot": {
+   "function": "Undocumented AI Agents"
+  },
+  "atlassian-bot": {
+   "function": "AI search, assistants and agents"
+  },
+  "Awario": {
+   "function": "AI Data Scrapers"
+  },
+  "AzureAI-SearchBot": {
+   "function": "AI Search Crawlers"
+  },
+  "bedrockbot": {
+   "function": "Data scraping for custom AI applications."
+  },
+  "bigsur.ai": {
+   "function": "AI Assistants"
+  },
+  "Bravebot": {
+   "function": "AI Data Providers"
+  },
+  "Brightbot": {
+   "function": "AI Data Providers"
+  },
+  "Brightbot 1.0": {
+   "function": "LLM/AI training."
+  },
+  "BuddyBot": {
+   "function": "AI Learning Companion"
+  },
+  "Bytespider": {
+   "function": "LLM training."
+  },
+  "CCBot": {
+   "function": "Provides open crawl dataset, used for many purposes, including Machine Learning/AI."
+  },
+  "Channel3Bot": {
+   "function": "AI Search Crawlers"
+  },
+  "ChatGLM-Spider": {
+   "function": "AI Data Scrapers"
+  },
+  "ChatGPT Agent": {
+   "function": "AI Agents"
+  },
+  "ChatGPT-User": {
+   "function": "AI Assistants"
+  },
+  "Claude-Code": {
+   "function": "AI Coding Agents"
+  },
+  "Claude-SearchBot": {
+   "function": "Claude-SearchBot navigates the web to improve search result quality for users. It analyzes online content specifically to enhance the relevance and accuracy of search responses."
+  },
+  "Claude-User": {
+   "function": "AI Assistants"
+  },
+  "Claude-Web": {
+   "function": "Undocumented AI Agents"
+  },
+  "ClaudeBot": {
+   "function": "Scrapes data to train Anthropic's AI products."
+  },
+  "Cloudflare-AutoRAG": {
+   "function": "Collects data for AI search"
+  },
+  "CloudVertexBot": {
+   "function": "AI Data Scrapers"
+  },
+  "Code": {
+   "function": "AI Coding Agents"
+  },
+  "cohere-ai": {
+   "function": "Retrieves data to provide responses to user-initiated prompts."
+  },
+  "cohere-training-data-crawler": {
+   "function": "AI Data Scrapers"
+  },
+  "Cotoyogi": {
+   "function": "AI LLM Scraper."
+  },
+  "CragCrawler": {
+   "function": "AI Data Providers"
+  },
+  "Crawl4AI": {
+   "function": "Undocumented AI Agents"
+  },
+  "Crawlspace": {
+   "function": "AI Data Providers"
+  },
+  "Cursor": {
+   "function": "AI Coding Agents"
+  },
+  "Datenbank Crawler": {
+   "function": "AI Data Scrapers"
+  },
+  "DeepSeekBot": {
+   "function": "Training language models and improving AI products"
+  },
+  "Devin": {
+   "function": "AI Coding Agents"
+  },
+  "Diffbot": {
+   "function": "AI Data Providers"
+  },
+  "DuckAssistBot": {
+   "function": "AI Assistants"
+  },
+  "Echobot Bot": {
+   "function": "AI Data Scrapers"
+  },
+  "EchoboxBot": {
+   "function": "Data collection to support AI-powered products."
+  },
+  "ExaBot": {
+   "function": "AI Data Providers"
+  },
+  "FacebookBot": {
+   "function": "Training language models"
+  },
+  "facebookexternalhit": {
+   "function": "Ostensibly only for sharing, but likely used as an AI crawler as well"
+  },
+  "Factset_spyderbot": {
+   "function": "AI model training."
+  },
+  "FirecrawlAgent": {
+   "function": "AI Data Providers"
+  },
+  "FriendlyCrawler": {
+   "function": "We are using the data from the crawler to build datasets for machine learning experiments."
+  },
+  "GeistHaus-PageFetcher": {
+   "function": "AI Assistants"
+  },
+  "Gemini-Deep-Research": {
+   "function": "AI Assistants"
+  },
+  "Google-Agent": {
+   "function": "AI Agents"
+  },
+  "Google-CloudVertexBot": {
+   "function": "Build and manage AI models for businesses employing Vertex AI"
+  },
+  "Google-Extended": {
+   "function": "LLM training."
+  },
+  "Google-Firebase": {
+   "function": "Used as part of AI apps developed by users of Google's Firebase AI products."
+  },
+  "Google-Gemini-CLI": {
+   "function": "AI Coding Agents"
+  },
+  "Google-NotebookLM": {
+   "function": "AI Assistants"
+  },
+  "GoogleAgent-Mariner": {
+   "function": "AI Agents"
+  },
+  "GoogleAgent-URLContext": {
+   "function": "AI Assistants"
+  },
+  "GoogleOther": {
+   "function": "Scrapes data."
+  },
+  "GoogleOther-Image": {
+   "function": "Scrapes data."
+  },
+  "GoogleOther-Video": {
+   "function": "Scrapes data."
+  },
+  "GPTBot": {
+   "function": "Scrapes data to train OpenAI's products."
+  },
+  "HenkBot": {
+   "function": "AI Data Providers"
+  },
+  "iAskBot": {
+   "function": "Undocumented AI Agents"
+  },
+  "iaskspider": {
+   "function": "Undocumented AI Agents"
+  },
+  "iaskspider/2.0": {
+   "function": "Crawls sites to provide answers to user queries."
+  },
+  "IbouBot": {
+   "function": "Search result generation."
+  },
+  "ICC-Crawler": {
+   "function": "Scrapes data to train and support AI technologies."
+  },
+  "ImagesiftBot": {
+   "function": "ImageSiftBot is a web crawler that scrapes the internet for publicly available images to support their suite of web intelligence products"
+  },
+  "imageSpider": {
+   "function": "AI Data Scrapers"
+  },
+  "img2dataset": {
+   "function": "Scrapes images for use in LLMs."
+  },
+  "ISSCyberRiskCrawler": {
+   "function": "Scrapes data to train machine learning models."
+  },
+  "kagi-fetcher": {
+   "function": "AI Assistants"
+  },
+  "Kangaroo Bot": {
+   "function": "AI Data Scrapers"
+  },
+  "Kimi-User": {
+   "function": "AI Assistants"
+  },
+  "KlaviyoAIBot": {
+   "function": "AI Assistants"
+  },
+  "KunatoCrawler": {
+   "function": "Undocumented AI Agents"
+  },
+  "laion-huggingface-processor": {
+   "function": "AI Data Scrapers"
+  },
+  "LAIONDownloader": {
+   "function": "AI tools and models for machine learning research."
+  },
+  "LCC": {
+   "function": "AI Data Scrapers"
+  },
+  "LinerBot": {
+   "function": "AI Assistants"
+  },
+  "Linguee Bot": {
+   "function": "AI powered translation service"
+  },
+  "LinkupBot": {
+   "function": "AI Search Crawlers"
+  },
+  "Manus-User": {
+   "function": "AI Agents"
+  },
+  "meta-externalagent": {
+   "function": "Used to train models and improve products."
+  },
+  "Meta-ExternalAgent": {
+   "function": "AI Data Scrapers"
+  },
+  "meta-externalfetcher": {
+   "function": "AI Assistants"
+  },
+  "Meta-ExternalFetcher": {
+   "function": "AI Assistants"
+  },
+  "meta-webindexer": {
+   "function": "AI Assistants"
+  },
+  "MistralAI-User": {
+   "function": "AI Assistants"
+  },
+  "MistralAI-User/1.0": {
+   "function": "Takes action based on user prompts."
+  },
+  "Mozilla-Tabstack": {
+   "function": "AI Data Providers"
+  },
+  "MyCentralAIScraperBot": {
+   "function": "AI data scraper"
+  },
+  "NagetBot": {
+   "function": "AI data scraper"
+  },
+  "netEstate Imprint Crawler": {
+   "function": "AI Data Scrapers"
+  },
+  "newsai": {
+   "function": "AI data scraper"
+  },
+  "NotebookLM": {
+   "function": "AI Assistants"
+  },
+  "NovaAct": {
+   "function": "AI Agents"
+  },
+  "OAI-SearchBot": {
+   "function": "Search result generation."
+  },
+  "omgili": {
+   "function": "Data is sold."
+  },
+  "omgilibot": {
+   "function": "Data is sold."
+  },
+  "OpenAI": {
+   "function": "Unclear at this time."
+  },
+  "opencode": {
+   "function": "AI Coding Agents"
+  },
+  "Operator": {
+   "function": "AI Agents"
+  },
+  "PanguBot": {
+   "function": "AI Data Scrapers"
+  },
+  "Panscient": {
+   "function": "Data collection and analysis using machine learning and AI."
+  },
+  "panscient.com": {
+   "function": "Data collection and analysis using machine learning and AI."
+  },
+  "Perplexity-User": {
+   "function": "AI Assistants"
+  },
+  "PerplexityBot": {
+   "function": "Search result generation."
+  },
+  "PetalBot": {
+   "function": "Used to provide recommendations in Hauwei assistant and AI search services."
+  },
+  "PhindBot": {
+   "function": "AI Assistants"
+  },
+  "Poggio-Citations": {
+   "function": "AI Assistants"
+  },
+  "Poseidon Research Crawler": {
+   "function": "AI research crawler"
+  },
+  "QualifiedBot": {
+   "function": "AI Assistants"
+  },
+  "Querit-SearchBot": {
+   "function": "AI Data Providers"
+  },
+  "QueritBot": {
+   "function": "AI Data Providers"
+  },
+  "QuillBot": {
+   "function": "Company offers AI detection, writing tools and other services."
+  },
+  "quillbot.com": {
+   "function": "Company offers AI detection, writing tools and other services."
+  },
+  "SBIntuitionsBot": {
+   "function": "Uses data gathered in AI development and information analysis."
+  },
+  "Scrapy": {
+   "function": "Scrapes data for a variety of uses including training AI."
+  },
+  "SemrushBot-OCOB": {
+   "function": "Crawls your site for ContentShake AI tool."
+  },
+  "SemrushBot-SWA": {
+   "function": "Checks URLs on your site for SEO Writing Assistant."
+  },
+  "Shap-User": {
+   "function": "AI Assistants"
+  },
+  "ShapBot": {
+   "function": "AI Data Providers"
+  },
+  "Sidetrade indexer bot": {
+   "function": "Extracts data for a variety of uses including training AI."
+  },
+  "Spider": {
+   "function": "AI Data Scrapers"
+  },
+  "TavilyBot": {
+   "function": "AI Data Providers"
+  },
+  "Terra Cotta": {
+   "function": "AI Data Providers"
+  },
+  "TerraCotta": {
+   "function": "AI Data Providers"
+  },
+  "Thinkbot": {
+   "function": "Insights on AI integration and automation."
+  },
+  "TikTokSpider": {
+   "function": "LLM training."
+  },
+  "Timpibot": {
+   "function": "Scrapes data for use in training LLMs."
+  },
+  "TongyiBot": {
+   "function": "AI Assistants"
+  },
+  "Trae": {
+   "function": "AI Coding Agents"
+  },
+  "TwinAgent": {
+   "function": "AI Agents"
+  },
+  "UseAI": {
+   "function": "AI Assistants"
+  },
+  "VelenPublicWebCrawler": {
+   "function": "Scrapes data for business data sets and machine learning models."
+  },
+  "WARDBot": {
+   "function": "AI Data Scrapers"
+  },
+  "Webzio-Extended": {
+   "function": "AI Data Scrapers"
+  },
+  "webzio-extended": {
+   "function": "AI Data Scrapers"
+  },
+  "wpbot": {
+   "function": "Live chat support and lead generation."
+  },
+  "WRTNBot": {
+   "function": "Undocumented AI Agents"
+  },
+  "YaK": {
+   "function": "According to the [Meltwater Consumer Intelligence page](https://www.meltwater.com/en/suite/consumer-intelligence) 'By applying AI, data science, and market research expertise to a live feed of global data sources, we transform unstructured data into actionable insights allowing better decision-making'."
+  },
+  "YandexAdditional": {
+   "function": "Scrapes/analyzes data for the YandexGPT LLM."
+  },
+  "YandexAdditionalBot": {
+   "function": "Scrapes/analyzes data for the YandexGPT LLM."
+  },
+  "YiyanBot": {
+   "function": "AI Assistants"
+  },
+  "YouBot": {
+   "function": "Scrapes data for search engine and LLMs."
+  },
+  "ZanistaBot": {
+   "function": "AI Search Crawlers"
+  }
+ }
+}

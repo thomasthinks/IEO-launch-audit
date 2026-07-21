@@ -208,8 +208,12 @@ def run(args) -> CheckResult:
             fix_safety="manual",
             fix_action=(
                 "Update sitemap emitter to derive lastmod from per-piece source "
-                f"({truth_label}), not build time. Google discounts sitemaps "
-                "with all-identical lastmod."
+                f"({truth_label}), not build time. If per-page accuracy can't "
+                "be maintained, remove the lastmod column entirely — Google's "
+                "trust in lastmod is binary per sitemap (Illyes, 2026-07-16: "
+                "sites with unreliable lastmods are 'probably better off "
+                "without the lastmods'); an inaccurate column gets the whole "
+                "column ignored."
             ),
         ))
     elif unverifiable >= len(sample) - 2:

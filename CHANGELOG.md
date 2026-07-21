@@ -3,6 +3,91 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.9.0] — 2026-07-21
+
+July 2026 GEO slate (ADR 0004): two-wave research pass (academic /
+first-party docs / vendor data studies / HN / Reddit / GitHub-peer
+tooling / data-API providers), then implementation. The month's evidence
+moved *against* aggressive GEO tactics; this release adds four new
+auditable surfaces and recalibrates finding text everywhere the new
+evidence demanded it.
+
+**Added**
+
+- Check 3 `3.7.content_signal` — parses Cloudflare's `Content-Signal:`
+  robots.txt lines (search= / ai-train= / use=; `use=` shipped
+  2026-07-01, stricter CF defaults land 2026-09-15). INFO both ways;
+  reported as state, never gated. Commented example added to
+  `templates/robots.txt`.
+- Check 3 `3.8.agents_md` — AGENTS.md presence (a file coding agents
+  actually read, unlike llms.txt). PASS/INFO.
+- Check 3 `3.9.registry_diff` — diffs the new vendored
+  `references/ai-robots-registry.json` snapshot (164 agents, from the
+  MIT community registry ai-robots-txt/ai.robots.txt) against the
+  skill's classified bot lists + consumer robots.txt. Awareness-tier
+  INFO; refresh command embedded in the snapshot's `_refresh` key.
+- Check 9 `9.13.prompt_injection` — adversarial answer-engine markup
+  detection: LLM-instruction phrases in HTML comments / hidden-styled /
+  aria-hidden blocks, plus invisible-Unicode density. WARN on hit
+  (not FAIL — legitimate content *about* prompt injection can trip it).
+- Check 9 `9.14.negative_citation_signals` — CTA-density + single-term
+  stuffing proxies (patterns 2026 benchmarks show backfiring). INFO.
+- Check 9 `9.15.dated_currency` — visible "as of <date>" currency
+  markers in body text (July 2026 citation correlate). INFO.
+- `scripts/emit-fix-prompts.py` — new standalone output mode: converts
+  `.launch-readiness-report.json` into `.launch-readiness-fixes.md`,
+  one copy-paste LLM remediation prompt per actionable WARN/FAIL
+  finding, FAIL-first. Presentation only.
+- `docs/decisions/0004-2026-07-geo-slate.md` — the full slate ADR,
+  including the premise update to ADR 0002/0003's citation-tracker
+  rejection (documented per-query APIs now exist — DataForSEO
+  `llm_mentions`, ~$0.10/query — but the rejection stands on
+  stochasticity: run-to-run citation Jaccard 0.34–0.42) and
+  considered-and-deferred entries (FCrDNS bot verification,
+  token-efficiency scoring, MCP-card detection, `Accept: text/markdown`
+  probing, Web Bot Auth).
+
+**Changed**
+
+- Check 3 llms.txt finding text upgraded to the quadruple-sourced
+  2026-06/07 evidence (Google explicit non-endorsement; Ahrefs
+  137K-domain study — 97% of llms.txt files get zero AI-crawler
+  requests and bots never probe for absent ones; independent 80K-blog
+  operator — zero bot fetches; SE Ranking 300K-domain model — llms.txt
+  is statistical noise for citation prediction). Check 3 doc's stale
+  WARN rating for llms.txt corrected to INFO (code was already INFO
+  since v1.2.1).
+- Checks 1/7 lastmod guidance now carries Illyes' binary-trust framing
+  (2026-07-16): Google trusts a sitemap's lastmod column wholesale or
+  ignores it wholesale; removing the column entirely is now documented
+  as a legitimate fix when per-page accuracy can't be maintained.
+- Check 2 doc: schema-for-AI-citation claim softened to match the
+  Ahrefs matched-control null result (1,885 treated / ~4,000 control
+  pages, diff-in-diff: no significant citation uplift from adding
+  JSON-LD) + SIGIR '26 252K-trial study (relevance and context position
+  dominate citation; content factors second-order). Schema's rationale
+  now rests on rich results, entity graphs, and citation *accuracy* —
+  explicitly not citation frequency.
+- Check 9 tactic notes carry the ADR 0004 stage-locality caution
+  (2026-07 critical survey of 45 studies: body-only citation
+  optimization measured to cut retrieval presence 9–16%); fanout notes
+  carry the Search Central Live Milan caveat ("forcing paragraph
+  chunking for AI is useless") — the structural signals are framed
+  readability-first.
+
+**Audit-state shift**
+
+- Consumers gain up to 6 new findings (3 INFO in check 3; 1 PASS/WARN +
+  2 INFO/PASS in check 9). No existing finding changes severity;
+  `9.13.prompt_injection` is the only new finding capable of WARN and
+  fires only on injection-shaped hidden content.
+
+**Migration notes**
+
+- None breaking. `references/ai-robots-registry.json` ships vendored;
+  check 3 degrades gracefully if it's deleted. `emit-fix-prompts.py` is
+  opt-in and reads the existing report JSON shape.
+
 ## [1.8.0] — 2026-06-14
 
 One additive change to check 12 (Search Console cross-verification):

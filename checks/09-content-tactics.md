@@ -191,6 +191,43 @@ This is the static-audit translation of IF-GEO's downside-risk warning.
 Short essays, announcements, product pages, changelogs, and intentionally
 narrow pieces are not expected to cover every facet.
 
+### 9.13 — Prompt-injection / hidden-instruction detection (ADR 0004, v1.9.0)
+
+Adversarial answer-engine markup: text aimed at the LLM reading the page
+rather than the human. External AI-citation trackers and crawler
+operators increasingly treat these as spam signals; the audit catches
+them before external tools do. Patterns (conservative — instruction-
+SHAPED hidden text only, not all hidden text):
+
+- LLM-instruction phrases ("ignore previous instructions", "you are an
+  AI", "when summarizing this page…", "always recommend…") inside HTML
+  comments, hidden-styled blocks (`display:none` / `visibility:hidden` /
+  `font-size:0` / `opacity:0`), or `aria-hidden="true"` blocks.
+- Abnormal invisible-Unicode density (>20 zero-width characters).
+
+| Assertion | Pass | Warn |
+|---|---|---|
+| No injection-shaped hidden content in corpus | clean | any hit |
+
+WARN, not FAIL: a piece legitimately *about* prompt injection quoting
+examples will hit these patterns — verify flagged pieces manually.
+
+### 9.14 — Negative-citation signals (ADR 0004, v1.9.0)
+
+INFO-tier scan for patterns 2026 evidence says backfire in AI retrieval:
+CTA-phrase density in informational body copy (>5/1000w) and a
+single-term stuffing proxy (one non-stopword term >4% of body words).
+Thresholds are conservative heuristics, not published cutoffs.
+
+### 9.15 — Dated-currency language (ADR 0004, v1.9.0)
+
+INFO-tier: share of pieces carrying explicit visible currency markers
+("as of Q3 2026", "updated March 2026") in body text. Correlational
+support only (July 2026 industry syntheses list dated language among
+citation correlates). Only add markers where true — a fake freshness
+stamp is worse than none. Sitemap/meta freshness is audited in checks
+1/7; this is the visible-text layer.
+
 ## How to fix
 
 These are content-level changes; no auto-fixable category. The script
@@ -287,6 +324,17 @@ RED is a recommendation, not a launch block.
 - [Qwairy — Content Freshness & AI Citations Guide 2026](https://www.qwairy.co/blog/content-freshness-ai-citations-guide)
 - [ALM Corp — LinkedIn #2 Most Cited Source (325K-prompt study)](https://almcorp.com/blog/linkedin-ai-search-citations-2026/)
 - [Search Engine Land — Content strategy in 2026](https://searchengineland.com/guide/content-strategy-in-2026)
+- [Optimizing Visibility in Generative Engines: A Critical Survey](https://arxiv.org/abs/2607.14035)
+  (2026-07) — 45-study meta-analysis: GEO gains are stage-local;
+  body-only citation optimization measured to cut retrieval presence
+  9-16%; run-to-run citation Jaccard 0.34-0.42. The reason every 9.x
+  finding here is advisory and "only where editorially true" (ADR 0004).
+- [SER — Search Central Live Milan recap](https://www.seroundtable.com/google-search-central-live-milan-41533.html)
+  (2026-06) — Google: "Forcing paragraph 'chunking' for AI is useless;
+  content organization must follow human readability criteria."
+- Dejan Content Optimization Engine (2026-07, 2,249 experiments):
+  framing/architecture edits beat credential/proof signals >2:1 —
+  corroborates the evidence-container emphasis (ADR 0004).
 
 ## Implementation notes
 

@@ -128,6 +128,32 @@ TRAINING_CLASS_BOTS = [
 KNOWN_UNDOCUMENTED_AI_CRAWLERS = ["Grok (xAI)", "DeepSeek"]
 
 
+# ADR 0004 — Cloudflare Content-Signal convention (blog.cloudflare.com,
+# 2026-07-01). Non-standard robots.txt line, e.g.:
+#   Content-Signal: search=yes, ai-train=no, use=reference
+# The `use=` parameter (immediate | reference | full) shipped 2026-07-01
+# and is auto-injected into Cloudflare-managed robots.txt; stricter
+# defaults for new ad-monetized domains land 2026-09-15. Cloudflare-led
+# convention, not a standard — the audit reports state, never gates on it.
+_CONTENT_SIGNAL_RE = re.compile(
+    r"^\s*Content-Signal\s*:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE
+)
+
+
+def parse_content_signals(content: str) -> list[dict[str, str]]:
+    """Parse Content-Signal lines into [{param: value, ...}] dicts."""
+    signals = []
+    for raw in _CONTENT_SIGNAL_RE.findall(content):
+        parsed = {}
+        for part in raw.split(","):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                parsed[k.strip().lower()] = v.strip().lower()
+        if parsed:
+            signals.append(parsed)
+    return signals
+
+
 def parse_robots_txt(content: str) -> dict[str, list[str]]:
     """Parse robots.txt into {user-agent: [Allow/Disallow lines]}."""
     out: dict[str, list[str]] = {}
@@ -310,16 +336,48 @@ def run(args) -> CheckResult:
             fix_action="Add Bytespider Disallow in robots.txt + edge WAF rule.",
         ))
 
-    # 3.5 — llms.txt presence (v1.2.1: severity downgraded WARN → INFO).
-    # 2026 disconfirmation: ~300K-domain SE Ranking analysis (Nov 2025)
-    # found zero statistically-significant correlation between llms.txt
-    # presence and AI citation rate. AEO Engine's 90-day study found
-    # 0.1% of AI-bot requests target llms.txt. No major LLM provider
-    # (OpenAI / Anthropic / Google / Meta / Mistral) commits to reading
-    # it in production as of Q1 2026. Primary value remaining: dev-tool
-    # context for Cursor / Claude Code / Codex (AGENTS.md serves that
-    # role explicitly now). Cheap to ship + harmless; not a citation
-    # lever. See SE Ranking + AEO Engine + AEO Press sources.
+    # 3.7 — Content-Signal lines (ADR 0004, Cloudflare convention).
+    content_signals = parse_content_signals(content)
+    if content_signals:
+        result.findings.append(Finding(
+            id="3.7.content_signal", severity="INFO",
+            title=f"robots.txt carries {len(content_signals)} Content-Signal line(s)",
+            current=content_signals,
+            notes=(
+                "Cloudflare-led convention (2026-07-01): search= / ai-train= "
+                "/ use= (immediate|reference|full, default reference). "
+                "Cloudflare-managed robots.txt auto-injects it; stricter "
+                "defaults for new ad-monetized CF domains from 2026-09-15. "
+                "Reported for awareness — not a standard, no gating."
+            ),
+        ))
+    else:
+        result.findings.append(Finding(
+            id="3.7.content_signal", severity="INFO",
+            title="No Content-Signal line in robots.txt (optional Cloudflare convention)",
+            notes=(
+                "Optional: 'Content-Signal: search=yes, ai-train=no, "
+                "use=reference' declares AI-usage policy in robots.txt. "
+                "Sites on Cloudflare-managed robots.txt may pick one up "
+                "automatically. Awareness only — no evidence of ranking or "
+                "citation effect; skip freely."
+            ),
+        ))
+
+    # 3.5 — llms.txt presence (v1.2.1: severity downgraded WARN → INFO;
+    # ADR 0004: evidence refresh, June-July 2026).
+    # Quadruple-sourced disconfirmation as of 2026-07:
+    #   1. Google Search Central (June 2026): Google Search does not use
+    #      or endorse llms.txt.
+    #   2. Ahrefs 137K-domain study (2026-07-15): 97% of llms.txt files
+    #      receive zero AI-crawler requests; zero requests target
+    #      non-existent llms.txt files — AI bots never probe for it.
+    #   3. Independent ~80K-blog platform operator: zero bot fetches.
+    #   4. SE Ranking 300K-domain XGBoost/SHAP: removing llms.txt as a
+    #      model feature IMPROVED citation prediction — it is noise.
+    # Adoption ~9-10% (two independent 2026-06 measurements). Primary
+    # remaining consumers are IDE/dev agents (Cursor / Claude Code /
+    # Copilot), not search or answer engines.
     llms_path = find_artifact(repo, config, "llms_txt", [
         "llms.txt", "public/llms.txt", "dist/public/llms.txt",
         "static/llms.txt", "out/llms.txt",
@@ -330,9 +388,12 @@ def run(args) -> CheckResult:
             title="llms.txt present",
             current=str(llms_path.relative_to(repo)),
             notes=(
-                "Cheap signal of editorial intent; no measured AI-citation "
-                "lift per 2026 large-N studies. Primary consumers are "
-                "developer tools, not search/answer engines."
+                "Cheap signal of editorial intent; AI bots do not "
+                "proactively fetch this file (Ahrefs 137K-domain study, "
+                "2026-07: 97% of llms.txt files get zero AI-crawler "
+                "requests). Google explicitly does not use or endorse it "
+                "(June 2026). Primary consumers are IDE/dev agents, not "
+                "search or answer engines."
             ),
         ))
     else:
@@ -342,11 +403,12 @@ def run(args) -> CheckResult:
             fix_safety="safe",
             fix_template="templates/llms.txt",
             fix_action=(
-                "Optional: emit llms.txt from template. 2026 disconfirmation: "
-                "SE Ranking 300K-domain study + AEO Engine 90-day bot-log "
-                "analysis show no measurable AI-citation lift. Major LLM "
-                "providers don't fetch it in production. Cheap and harmless "
-                "to ship; do not treat as a citation lever."
+                "Optional: emit llms.txt from template. Quadruple-sourced "
+                "2026 disconfirmation (Google non-endorsement; Ahrefs 137K: "
+                "97% zero-fetch, AI bots never probe for the file; 80K-blog "
+                "operator: zero bot fetches; SE Ranking 300K: statistical "
+                "noise). Cheap and harmless to ship for IDE-agent context; "
+                "do not treat as a citation lever."
             ),
         ))
 
@@ -395,6 +457,69 @@ def run(args) -> CheckResult:
             fix_safety="safe",
             fix_template="templates/llms-full.txt",
             fix_action="Optional: emit llms-full.txt with plain-text dump of anchor pieces.",
+        ))
+
+    # 3.8 — agents.md presence (ADR 0004). Unlike llms.txt, AGENTS.md is
+    # a convention coding agents (Cursor / Claude Code / Codex / Copilot)
+    # actually read. Relevant for repos whose site doubles as docs for a
+    # tool/library; purely optional for content sites.
+    agents_md = next(
+        (repo / n for n in ("AGENTS.md", "agents.md") if (repo / n).exists()),
+        None,
+    )
+    if agents_md:
+        result.findings.append(Finding(
+            id="3.8.agents_md", severity="PASS",
+            title="AGENTS.md present (coding-agent context file)",
+            current=agents_md.name,
+        ))
+    else:
+        result.findings.append(Finding(
+            id="3.8.agents_md", severity="INFO",
+            title="No AGENTS.md (optional; read by coding agents, not search engines)",
+            notes=(
+                "Optional convention actually consumed by IDE/coding agents. "
+                "Worth adding when the repo doubles as developer-facing "
+                "docs; no search/answer-engine effect."
+            ),
+        ))
+
+    # 3.9 — AI-crawler registry diff (ADR 0004). Compares the vendored
+    # ai.robots.txt registry snapshot against the skill's classified bot
+    # lists + the consumer's addressed UAs. Awareness only — the curated
+    # citation/training split above remains the policy surface. Graceful
+    # degrade when the snapshot is absent.
+    registry_path = Path(__file__).resolve().parent.parent / "references/ai-robots-registry.json"
+    if registry_path.exists():
+        try:
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            registry_agents = registry.get("agents", {})
+        except (json.JSONDecodeError, OSError):
+            registry_agents = {}
+        classified_lower = {b.lower() for b in CITATION_CLASS_BOTS + TRAINING_CLASS_BOTS}
+        unclassified = sorted(
+            name for name in registry_agents
+            if name.lower() not in classified_lower
+            and name.lower() not in addressed_lower
+        )
+        result.findings.append(Finding(
+            id="3.9.registry_diff", severity="INFO",
+            title=(
+                f"{len(unclassified)}/{len(registry_agents)} registry-known AI "
+                "crawlers neither classified by this skill nor addressed in robots.txt"
+            ),
+            current={
+                "registry_snapshot": registry.get("_snapshot_date", "unknown"),
+                "sample": unclassified[:15],
+            },
+            notes=(
+                "Registry: ai-robots-txt/ai.robots.txt (MIT, community-"
+                "maintained). Most unclassified agents are niche or "
+                "scraper-tier; the curated citation/training lists above "
+                "are the deliberate policy surface. Use this diff to spot "
+                "newly-documented crawlers worth classifying. Refresh "
+                "command in checks/03 and the snapshot file header."
+            ),
         ))
 
     result.summary = (

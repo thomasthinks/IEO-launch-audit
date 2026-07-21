@@ -123,6 +123,30 @@ robots.txt should reference all sitemap files.
 | Assertion | Pass | Fail |
 |---|---|---|
 | robots.txt `Sitemap:` directive present | yes | no |
+
+### 3.8 — Content-Signal, AGENTS.md, registry diff (ADR 0004, v1.9.0)
+
+Three INFO-tier awareness findings; none gate:
+
+- **`3.7.content_signal`** — parses `Content-Signal:` lines in
+  robots.txt (Cloudflare convention, 2026-07-01) and reports the
+  `search=` / `ai-train=` / `use=` tuple. The `use=` parameter
+  (`immediate` / `reference` / `full`) is auto-injected into
+  Cloudflare-managed robots.txt; stricter defaults for new ad-monetized
+  CF domains land 2026-09-15. Reported as state, never as policy — this
+  is a vendor convention, not a standard.
+- **`3.8.agents_md`** — AGENTS.md presence. Unlike llms.txt, coding
+  agents (Cursor / Claude Code / Codex / Copilot) actually read this
+  file. Optional; relevant when the repo doubles as developer docs.
+- **`3.9.registry_diff`** — diffs the vendored
+  `references/ai-robots-registry.json` snapshot (from the
+  community-maintained [ai-robots-txt](https://github.com/ai-robots-txt/ai.robots.txt)
+  project, MIT) against the skill's classified bot lists + the
+  consumer's addressed UAs. Awareness only: the curated citation /
+  training split is the deliberate policy surface; the diff exists to
+  surface newly-documented crawlers worth classifying. Refresh the
+  snapshot with the command embedded in the snapshot file's `_refresh`
+  key.
 | References `sitemap.xml` | yes | no |
 | References `image-sitemap.xml` (if exists) | yes | no |
 | References `rss.xml` (informational; not standard but useful) | yes | — |
@@ -307,8 +331,12 @@ heuristic: signature + pillar pieces only).
 
 - **FAIL (must fix before flip):** robots.txt missing, no Sitemap directive,
   3+ citation-class bots not addressed, training / grounding-class policy unstated.
-- **WARN (should fix before flip):** llms.txt missing, llms-full.txt missing,
-  Bytespider not addressed.
+- **WARN (should fix before flip):** Bytespider not addressed.
+- **INFO (optional):** llms.txt missing, llms-full.txt missing, no
+  Content-Signal line, no AGENTS.md, registry-diff awareness count.
+  llms.txt/llms-full.txt were WARN before v1.2.1; downgraded because AI
+  bots do not proactively fetch them (see 2026 evidence in the finding
+  notes and ADR 0004).
 - **PASS:** all assertions hold.
 
 ## Cited research
