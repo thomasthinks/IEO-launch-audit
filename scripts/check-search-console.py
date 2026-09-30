@@ -145,6 +145,12 @@ def _call_bing(endpoint: str, params: dict) -> tuple[str, dict | str]:
         return ("error", f"Bing API non-JSON response: {e!r}"[:200])
 
 
+def _bing_row_ms(row: dict) -> int:
+    """Epoch ms from a Bing `"Date": "/Date(1715990400000)/"` field; 0 if absent or malformed."""
+    m = re.search(r"-?\d+", str(row.get("Date") or ""))
+    return int(m.group(0)) if m else 0
+
+
 def _check_bing(result: CheckResult, repo: Path, config: dict, origin: str) -> bool:
     """Run the Bing-side findings. Returns True if Bing was configured and
     a call was attempted (regardless of success), False if unconfigured.
@@ -208,6 +214,10 @@ def _check_bing(result: CheckResult, repo: Path, config: dict, origin: str) -> b
         return True
     # GetCrawlStats returns an array of daily snapshots. Sum the last 7
     # days for crawl-errors; use the most recent row for index count.
+    # The API returns them OLDEST-first (measured 2026-09-04, platform#55: stats[0]
+    # read InIndex 1 where the newest row said 304), so order by the row's own
+    # `/Date(ms)/` stamp rather than trusting either end of the list.
+    stats = sorted(stats, key=_bing_row_ms, reverse=True)
     recent = stats[:7] if len(stats) >= 7 else stats
     total_crawled = sum(int(r.get("CrawledPages", 0) or 0) for r in recent)
     total_errors = sum(int(r.get("CrawlErrors", 0) or 0) for r in recent)

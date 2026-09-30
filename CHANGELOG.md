@@ -3,6 +3,24 @@
 All notable changes to this skill. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + SemVer.
 
+## [1.9.1] — 2026-09-30
+
+### Fixed
+
+- **Check 12 read the oldest Bing crawl row as the latest** (platform#55).
+  `GetCrawlStats` returns rows oldest-first, and the check took `stats[0]` as the
+  current index count and `stats[:7]` as the last week. On thomasjankowski.com that
+  reported `Bing indexed 1 URL(s); sitemap declares 289 (0%)` (WARN) where the newest
+  row said **304 (105%)**. A healthy signal read as the worst one the check can emit.
+  Rows are now ordered by their own `/Date(ms)/` stamp, so the result no longer
+  depends on the API's ordering. The crawl-error, crawled and blocked totals now cover the
+  actual last 7 days.
+
+### Audit-state shift
+
+- `12.bing.indexed_vs_sitemap` flips WARN → PASS on sites whose index grew over the
+  window. `12.bing.crawl_errors` may change for the same reason (it summed the oldest week).
+
 ## [1.9.0] — 2026-07-21
 
 July 2026 GEO slate (ADR 0004): two-wave research pass (academic /
